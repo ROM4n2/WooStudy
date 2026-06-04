@@ -31,7 +31,10 @@
         <div class="msg-content">
           <img v-if="msg.image_url" :src="msg.image_url" class="msg-image" alt="题目图片" />
           <div class="msg-text" v-html="renderMarkdown(msg.content)"></div>
-          <div v-if="msg.model_used" class="msg-meta">{{ msg.model_used }}</div>
+          <div class="msg-meta">
+            <span class="msg-time">{{ formatTime(msg.created_at) }}</span>
+            <span v-if="msg.model_used" class="msg-model">{{ msg.model_used }}</span>
+          </div>
         </div>
         <!-- Combo 连击标记 -->
         <div
@@ -182,6 +185,7 @@ async function handleSend() {
     id: Date.now(),
     role: 'user',
     content: text || '(图片)',
+    created_at: new Date().toISOString(),
     _combo: followUpMode.value ? comboCount.value : 0,
   }
   messages.value.push(userMsg)
@@ -193,14 +197,17 @@ async function handleSend() {
     const res = hasImages
       ? await uploadImage(text, images[0].file, userStore.deepMode)
       : await sendMessage(text, userStore.deepMode, followUpMode.value)
+    const history = res.history || []
+    const lastMsg = history.length > 0 ? history[history.length - 1] : null
     messages.value.push({
       id: Date.now() + 1,
       role: 'assistant',
       content: res.content,
       model_used: res.model_used,
+      created_at: lastMsg?.created_at || new Date().toISOString(),
     })
   } catch (err) {
-    messages.value.push({ id: Date.now() + 1, role: 'assistant', content: `❌ ${err.message}` })
+    messages.value.push({ id: Date.now() + 1, role: 'assistant', content: `❌ ${err.message}`, created_at: new Date().toISOString() })
   } finally {
     loading.value = false
     await nextTick()
@@ -228,6 +235,21 @@ function renderMarkdown(text) {
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   html = html.replace(/\n/g, '<br />')
   return html
+}
+
+function formatTime(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  const now = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const isToday = d.toDateString() === now.toDateString()
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const isYesterday = d.toDateString() === yesterday.toDateString()
+  if (isToday) return hhmm
+  if (isYesterday) return `昨天 ${hhmm}`
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hhmm}`
 }
 </script>
 
@@ -394,6 +416,18 @@ function renderMarkdown(text) {
   margin-top: 8px;
   padding-top: 6px;
   border-top: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.msg-time {
+  white-space: nowrap;
+}
+.msg-model {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .user-msg .msg-meta {
