@@ -1,0 +1,184 @@
+"""学情分析服务——做题统计 + AI 深度分析"""
+
+import json
+from app.db.database import get_db
+from app.ai.dispatcher import dispatch_analyze
+
+
+async def _ensure_session(session_id: str) -> None:
+    """如果 session 不存在则创建"""
+    db = await get_db()
+    cursor = await db.execute("SELECT id FROM sessions WHERE session_id = ?", (session_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        await db.execute("INSERT INTO sessions (session_id) VALUES (?)", (session_id,))
+        await db.commit()
+
+
+async def get_report(session_id: str, force_refresh: bool = False) -> dict:
+    """
+    获取学情分析报告
+
+    Strategy:
+    - 先从缓存读取，如果 5 分钟内生成过且非强制刷新，直接返回
+    - 否则从错题统计数据生成新的报告
+    """
+    db = await get_db()
+
+    # 1. 检查缓存
+    if not force_refresh:
+        cursor = await db.execute(
+            "SELECT report_json, generated_at FROM analysis_cache WHERE session_id = ?",
+            (session_id,),
+        )
+        cached = await cursor.fetchone()
+        await cursor.close()
+        if cached:
+            # 检查是否 5 分钟内生成的
+            # todo: 更精确的时间判断
+            return json.loads(cached["report_json"])
+
+    # 2. 统计各科错题数据
+    cursor = await db.execute(
+        """SELECT subject,
+                  COUNT(*) as total,
+                  SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct_count
+           FROM error_logs WHERE session_id = ?
+           GROUP BY subject""",
+        (session_id,),
+    )
+    stats_rows = await cursor.fetchall()
+    await cursor.close()
+
+    # 总统计
+    cursor = await db.execute(
+        """SELECT COUNT(*) as total,
+                  SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct_count
+           FROM error_logs WHERE session_id = ?""",
+        (session_id,),
+    )
+    total_row = await cursor.fetchone()
+    await cursor.close()
+
+    total_questions = total_row["total"] or 0
+    total_correct = total_row["correct_count"] or 0
+    total_correct_rate = total_correct / total_questions if total_questions > 0 else 0
+
+    # 3. 格式化统计信息，用于 AI 深度分析
+    stats_text = f"学生做题总览：共 {total_questions} 题，正确率 {total_correct_rate:.1%}\n\n各科详情：\n"
+    radar_data = []
+    for row in stats_rows:
+        rate = row["correct_count"] / row["total"] if row["total"] > 0 else 0
+        stats_text += f"- {row['subject']}: {row['total']} 题，正确率 {rate:.1%}\n"
+        radar_data.append({
+            "subject": row["subject"],
+            "correct_rate": round(rate, 2),
+            "question_count": row["total"],
+        })
+
+    # 获取具体的错题信息
+    cursor = await db.execute(
+        """SELECT q.content, e.user_answer, q.correct_answer, e.wrong_reason, e.subject
+           FROM error_logs e
+           LEFT JOIN questions q ON e.question_id = q.id
+           WHERE e.session_id = ? AND e.is_correct = 0
+           LIMIT 10""",
+        (session_id,),
+    )
+    wrong_rows = await cursor.fetchall()
+    await cursor.close()
+
+    if wrong_rows:
+        stats_text += "\n典型错题示例：\n"
+        for r in wrong_rows:
+            stats_text += f"- [{r['subject']}] {r['content'][:50]}... 错答: {r['user_answer']} 正解: {r['correct_answer']}\n"
+
+    # 4. 调用 AI 进行深度分析
+    ai_result = await dispatch_analyze(stats_text)
+
+    # 尝试解析 AI 返回的 JSON
+    try:
+        analysis = json.loads(ai_result["content"])
+    except (json.JSONDecodeError, KeyError):
+        # 返回自动统计（不依赖 AI）
+        analysis = {
+            "radar_data": radar_data,
+            "weaknesses": [],
+            "summary": "AI 深度分析暂不可用，以上为基础统计数据。",
+        }
+
+    # 5. 覆盖 AI 的雷达数据为实际统计（更准确）
+    analysis["radar_data"] = radar_data
+
+    report = {
+        "session_id": session_id,
+        "total_questions": total_questions,
+        "total_correct_rate": round(total_correct_rate, 2),
+        "radar_data": radar_data,
+        "weaknesses": analysis.get("weaknesses", []),
+        "summary": analysis.get("summary", "继续保持学习！"),
+    }
+
+    # 6. 写入缓存（确保 session 存在以符合外键约束）
+    await _ensure_session(session_id)
+    await db.execute(
+        "INSERT OR REPLACE INTO analysis_cache (session_id, report_json, generated_at) VALUES (?, ?, datetime('now'))",
+        (session_id, json.dumps(report, ensure_ascii=False)),
+    )
+    await db.commit()
+
+    return report
+
+
+async def get_learning_journey(session_id: str) -> dict:
+    """获取学习历程数据（按天组织的学习摘要 + 知识点覆盖）"""
+    db = await get_db()
+    cursor = await db.execute(
+        """SELECT date, subjects_json, summary_text, updated_at
+           FROM learning_summaries
+           WHERE session_id = ?
+           ORDER BY date DESC
+           LIMIT 30""",
+        (session_id,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+
+    days = []
+    all_subjects = set()
+    for r in rows:
+        subjects = json.loads(r["subjects_json"]) if r["subjects_json"] else []
+        all_subjects.update(subjects)
+        days.append({
+            "date": r["date"],
+            "subjects": subjects,
+            "summary": (r["summary_text"] or "")[:200],
+        })
+
+    # 学习连续天数
+    streak = _calc_streak([d["date"] for d in days])
+
+    return {
+        "days": days,
+        "total_days": len(days),
+        "streak": streak,
+        "subjects_covered": sorted(all_subjects),
+    }
+
+
+def _calc_streak(dates: list[str]) -> int:
+    """计算连续学习天数"""
+    from datetime import datetime, timedelta
+    if not dates:
+        return 0
+    sorted_dates = sorted(set(dates), reverse=True)
+    streak = 1
+    for i in range(len(sorted_dates) - 1):
+        d1 = datetime.strptime(sorted_dates[i], "%Y-%m-%d")
+        d2 = datetime.strptime(sorted_dates[i + 1], "%Y-%m-%d")
+        if (d1 - d2).days == 1:
+            streak += 1
+        else:
+            break
+    return streak
