@@ -1,6 +1,7 @@
 """建表和迁移脚本——应用启动时自动执行"""
 
 import json
+import os
 from pathlib import Path
 
 from app.db.database import get_db
@@ -189,6 +190,24 @@ async def _run_migrations(db) -> None:
             print(f"[DB] 迁移完成：{desc}")
         except Exception:
             pass  # 字段已存在则忽略
+
+    # 环境变量设管理员（一次性，安全：只生效一次，不会重复覆盖）
+    admin_user = os.environ.get("ADMIN_USERNAME", "").strip()
+    if admin_user:
+        try:
+            cursor = await db.execute("SELECT id, role FROM users WHERE username = ?", (admin_user,))
+            row = await cursor.fetchone()
+            await cursor.close()
+            if row and row["role"] != "admin":
+                await db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (row["id"],))
+                await db.commit()
+                print(f"[DB] 已将 [{admin_user}] 设为管理员")
+            elif row:
+                print(f"[DB] [{admin_user}] 已经是管理员")
+            else:
+                print(f"[DB] 未找到用户 [{admin_user}]，跳过自动设管理员")
+        except Exception as e:
+            print(f"[DB] 自动设管理员失败: {e}")
 
     # 导入种子题目（如果题库为空）
     cursor = await db.execute("SELECT COUNT(*) FROM questions")
