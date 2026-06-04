@@ -81,10 +81,13 @@ dispatch_chat(content, image_base64, deep_mode, mimo_key, deepseek_key)
   - 缩放/拖拽/点击信息卡片（含掌握度进度条）
   - 深空背景，导航栏「图谱」入口
   - seed_data/knowledge_graph.json 结构化数据
-  - 预埋知识点上传接口位（待开发）
+  - DB 持久化 knowledge_nodes/edges/markers 三张表
+  - 管理员 CRUD 接口（nodes + edges）
+  - 用户标记系统（收藏/薄弱/重点），右键菜单 + 信息卡片切换
+  - 掌握度算法增强：错题库 + 用户标记 + 学情摘要加权
+  - 角色权限 admin/contributor/user
 
 ## 待做
-- [ ] 知识点数据上传接口
 - [ ] 讨论区 + 资源共享
 - [ ] 迁移阿里云（华北2 北京 + ICP 备案）
   - 架构：Nginx 反代前端静态文件 + FastAPI 后端 + SQLite
