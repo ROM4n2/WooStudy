@@ -82,8 +82,37 @@
               <code class="invite-code">{{ mimoInviteCode }}</code>
               <button class="copy-btn" @click="copyInviteCode">{{ copied ? '已复制 ✓' : '复制' }}</button>
             </div>
+            <button class="support-trigger" @click="showSupportModal = true">
+              💡 如果可以，填我的邀请码支持一下 →
+            </button>
           </div>
         </div>
+
+        <!-- 支持弹窗 -->
+        <Teleport to="body">
+          <div v-if="showSupportModal" class="modal-overlay" @click.self="showSupportModal = false">
+            <div class="modal-card">
+              <button class="modal-close" @click="showSupportModal = false">✕</button>
+              <div class="modal-emoji">🙏</div>
+              <h3 class="modal-title">支持一下开发者</h3>
+              <p class="modal-text">
+                如果你觉得 WooStudy 对你有帮助，在注册 Mimo 时填上我的邀请码，就是对我最大的支持 ❤️
+              </p>
+              <div class="modal-code-box">
+                <code class="modal-code">{{ mimoInviteCode }}</code>
+                <button class="modal-copy-btn" @click="copyInviteCode">
+                  {{ copied ? '已复制 ✓' : '复制邀请码' }}
+                </button>
+              </div>
+              <p class="modal-hint">
+                注册 Mimo 时填入邀请码，你我都能获得额外额度 🎁
+              </p>
+              <a :href="mimoRegisterUrl" target="_blank" class="modal-link" @click="showSupportModal = false">
+                去 Mimo 注册 →
+              </a>
+            </div>
+          </div>
+        </Teleport>
 
         <p v-if="regError" class="form-error">{{ regError }}</p>
         <button type="submit" class="submit-btn" :disabled="authStore.loading">
@@ -108,6 +137,7 @@ const authStore = useAuthStore()
 
 const tab = ref('login')
 const copied = ref(false)
+const showSupportModal = ref(false)
 const mimoInviteCode = ref('')
 const mimoRegisterUrl = ref('https://platform.xiaomimimo.com/')
 
@@ -446,5 +476,140 @@ async function copyInviteCode() {
 }
 .copy-btn:hover {
   background: #B45309;
+}
+
+/* 支持弹窗触发按钮 */
+.support-trigger {
+  margin-top: 10px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--ink-700);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--amber-400);
+  transition: color 0.15s;
+}
+.support-trigger:hover {
+  color: #92400E;
+}
+
+/* 弹窗遮罩 */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 24px;
+  animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 弹窗卡片 */
+.modal-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 36px 32px 28px;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  animation: slideUp 0.3s ease-out;
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--neutral-400);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.modal-close:hover {
+  background: var(--neutral-100);
+}
+.modal-emoji {
+  font-size: 48px;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+.modal-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ink-900);
+  margin: 0 0 10px;
+}
+.modal-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--neutral-600);
+  margin: 0 0 18px;
+}
+.modal-code-box {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.modal-code {
+  padding: 8px 16px;
+  background: var(--amber-50);
+  border: 2px dashed var(--amber-500);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink-900);
+  letter-spacing: 0.12em;
+}
+.modal-copy-btn {
+  padding: 8px 16px;
+  background: var(--amber-600);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.modal-copy-btn:hover {
+  background: #B45309;
+}
+.modal-hint {
+  font-size: 12px;
+  color: var(--neutral-400);
+  margin: 0 0 16px;
+}
+.modal-link {
+  display: inline-block;
+  padding: 10px 28px;
+  background: var(--ink-900);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.modal-link:hover {
+  background: var(--ink-800);
 }
 </style>
