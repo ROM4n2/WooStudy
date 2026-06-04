@@ -7,6 +7,17 @@ from app.db.database import get_db
 
 
 CREATE_TABLES_SQL = """
+-- 用户表（替代匿名 session）
+CREATE TABLE IF NOT EXISTS users (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    username         TEXT    NOT NULL UNIQUE,
+    password_hash    TEXT    NOT NULL,
+    mimo_api_key     TEXT    DEFAULT '',
+    deepseek_api_key TEXT    DEFAULT '',
+    has_api_keys     INTEGER NOT NULL DEFAULT 0,
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 -- 匿名用户会话表
 CREATE TABLE IF NOT EXISTS sessions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

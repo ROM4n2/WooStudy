@@ -4,8 +4,8 @@ import ChatView from '../views/ChatView.vue'
 const routes = [
   {
     path: '/',
-    name: 'gate',
-    component: () => import('../views/AccessGate.vue'),
+    name: 'login',
+    component: () => import('../views/LoginView.vue'),
   },
   {
     path: '/chat',
@@ -39,16 +39,14 @@ const router = createRouter({
   routes,
 })
 
-// 导航守卫：未通过密码门禁则跳回首页
+// 导航守卫：未登录则跳回首页
 router.beforeEach((to, from, next) => {
-  // 首页（密码门禁）不需要验证
   if (to.path === '/') {
     next()
     return
   }
-  // 检查是否已通过密码验证
-  const gatePassed = localStorage.getItem('woostudy_gate')
-  if (gatePassed === 'true') {
+  const token = localStorage.getItem('woostudy_token')
+  if (token) {
     next()
   } else {
     next('/')

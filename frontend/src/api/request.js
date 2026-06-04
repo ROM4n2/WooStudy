@@ -1,23 +1,27 @@
-/** axios 实例——统一处理 session_id 和基础 URL */
-
+/** axios 实例——统一认证和基础 URL */
 import axios from 'axios'
-import { useUserStore } from '../stores/user'
 
-// 生产环境：VITE_API_BASE 指向 Railway 后端地址（如 https://your-app.railway.app）
-// 开发环境：Vite proxy 转发 /api → localhost:8000
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 const request = axios.create({
   baseURL: API_BASE,
-  timeout: 60000,  // AI 响应可能较慢，超时设为 60s
+  timeout: 60000,
 })
 
-// 请求拦截器：自动附加 session_id
+// 请求拦截器：自动附加 JWT token
 request.interceptors.request.use((config) => {
-  const userStore = useUserStore()
-  config.params = {
-    ...config.params,
-    session_id: userStore.sessionId,
+  const token = localStorage.getItem('woostudy_token')
+  // 仍然保留 session_id 用于历史数据兼容
+  const sessionId = localStorage.getItem('woostudy_session_id')
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  if (sessionId) {
+    config.params = {
+      ...config.params,
+      session_id: sessionId,
+    }
   }
   return config
 })

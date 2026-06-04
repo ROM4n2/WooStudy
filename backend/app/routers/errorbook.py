@@ -1,8 +1,9 @@
 """错题本路由"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from app.schemas.errorbook import ReviewRequest
 from app.services import errorbook_service
+from app.auth import get_current_user, require_user
 
 router = APIRouter(prefix="/api/errorbook", tags=["错题本"])
 
@@ -30,9 +31,16 @@ async def mark_reviewed(error_id: int, body: ReviewRequest) -> dict:
 
 
 @router.post("/{error_id}/variant")
-async def generate_variant(error_id: int, session_id: str) -> dict:
+async def generate_variant(
+    error_id: int,
+    session_id: str,
+    user: dict = Depends(get_current_user),
+) -> dict:
     """生成变式题"""
+    user = require_user(user)
     try:
-        return await errorbook_service.generate_variant(error_id, session_id)
+        return await errorbook_service.generate_variant(
+            error_id, session_id, user_id=user["user_id"],
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

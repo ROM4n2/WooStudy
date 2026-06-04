@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.schemas.chat import ChatSendRequest, ChatHistoryResponse
+from app.schemas.chat import ChatSendRequest
 from app.services import chat_service
 from app.ai.dispatcher import dispatch_optimize_prompt
+from app.auth import get_current_user, require_user
 
 router = APIRouter(prefix="/api/chat", tags=["答疑"])
 
@@ -16,8 +17,9 @@ class OptimizeRequest(BaseModel):
 
 
 @router.post("/optimize")
-async def optimize_prompt(body: OptimizeRequest) -> dict:
-    """优化用户提问，让问题更有条理"""
+async def optimize_prompt(body: OptimizeRequest, user: dict = Depends(get_current_user)) -> dict:
+    """优化用户提问"""
+    user = user or {}  # 可选认证
     result = await dispatch_optimize_prompt(body.text)
     return JSONResponse(result)
 
@@ -28,11 +30,14 @@ async def send_message(
     body: ChatSendRequest,
     deep_mode: bool = False,
     follow_up: bool = False,
+    user: dict = Depends(get_current_user),
 ) -> dict:
-    """发送文字消息（follow_up 开启追问模式，携带上下文总结）"""
+    """发送文字消息"""
+    user = require_user(user) if user else {"user_id": 0}
     result = await chat_service.send_message(
         session_id=session_id,
         content=body.content,
+        user_id=user.get("user_id", 0),
         deep_mode=deep_mode,
         follow_up=follow_up,
     )
@@ -45,17 +50,19 @@ async def upload_image(
     content: str = Form(""),
     image: UploadFile = File(...),
     deep_mode: bool = Form(False),
+    user: dict = Depends(get_current_user),
 ) -> dict:
     """上传图片并提问"""
-    # 检查图片大小
     image_data = await image.read()
-    if len(image_data) > 5 * 1024 * 1024:  # 5MB
+    if len(image_data) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="图片大小不能超过 5MB")
 
+    user = require_user(user) if user else {"user_id": 0}
     result = await chat_service.send_message(
         session_id=session_id,
         content=content,
         image_data=image_data,
+        user_id=user.get("user_id", 0),
         deep_mode=deep_mode,
     )
     return JSONResponse(result)

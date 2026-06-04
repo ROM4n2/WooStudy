@@ -3,6 +3,7 @@
 import json
 from app.db.database import get_db
 from app.ai.dispatcher import dispatch_analyze
+from app.services import get_user_api_keys
 
 
 async def _ensure_session(session_id: str) -> None:
@@ -16,7 +17,7 @@ async def _ensure_session(session_id: str) -> None:
         await db.commit()
 
 
-async def get_report(session_id: str, force_refresh: bool = False) -> dict:
+async def get_report(session_id: str, force_refresh: bool = False, user_id: int = 0) -> dict:
     """
     获取学情分析报告
 
@@ -94,8 +95,9 @@ async def get_report(session_id: str, force_refresh: bool = False) -> dict:
         for r in wrong_rows:
             stats_text += f"- [{r['subject']}] {r['content'][:50]}... 错答: {r['user_answer']} 正解: {r['correct_answer']}\n"
 
-    # 4. 调用 AI 进行深度分析
-    ai_result = await dispatch_analyze(stats_text)
+    # 4. 获取用户 API Key 并调用 AI 进行深度分析
+    keys = await get_user_api_keys(user_id) if user_id else {"deepseek_key": ""}
+    ai_result = await dispatch_analyze(stats_text, deepseek_key=keys["deepseek_key"])
 
     # 尝试解析 AI 返回的 JSON
     try:

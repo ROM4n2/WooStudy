@@ -5,12 +5,12 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # ---------- AI API Keys ----------
+    # ---------- AI API Keys（备选：当用户未提供自己的 Key 时使用） ----------
     mimo_api_key: str = ""
     deepseek_api_key: str = ""
 
     # ---------- API Base URLs ----------
-    mimo_base_url: str = "https://api.mimo.com/v1"  # 占位，按实际文档修改
+    mimo_base_url: str = "https://api.xiaomimimo.com/v1"
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     # ---------- 应用配置 ----------
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:4173",
-        "https://woo-study.vercel.app",  # 生产环境前端域名
+        "https://woo-study.vercel.app",
     ]
 
     # ---------- 数据库 ----------
@@ -31,10 +31,16 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
 
     # ---------- AI 调度 ----------
-    mimo_confidence_threshold: float = 0.7  # Mimo 置信度低于此值时 fallback 到 DeepSeek
+    mimo_confidence_threshold: float = 0.7
 
     # ---------- Mock 模式 ----------
-    mock_mode: bool = False  # True = 所有 AI 调用走 Mock，不消耗真实配额
+    mock_mode: bool = False
+
+    # ---------- JWT ----------
+    jwt_secret: str = "dev-secret-change-in-production"
+
+    # ---------- Mimo 邀请码 ----------
+    mimo_invite_code: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

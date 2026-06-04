@@ -5,6 +5,7 @@ from typing import Optional
 
 from app.db.database import get_db
 from app.ai.dispatcher import dispatch_generate_variant
+from app.services import get_user_api_keys
 
 
 async def get_error_logs(
@@ -77,7 +78,7 @@ async def mark_reviewed(error_log_id: int, reviewed: bool = True) -> dict:
     return {"success": True}
 
 
-async def generate_variant(error_log_id: int, session_id: str) -> dict:
+async def generate_variant(error_log_id: int, session_id: str, user_id: int = 0) -> dict:
     """
     基于错题生成变式题
 
@@ -102,12 +103,14 @@ async def generate_variant(error_log_id: int, session_id: str) -> dict:
     if row is None:
         raise ValueError(f"错题记录不存在: {error_log_id}")
 
-    # 2. 调用 AI
+    # 2. 获取用户 API Key 并调用 AI
+    keys = await get_user_api_keys(user_id) if user_id else {"deepseek_key": ""}
     ai_result = await dispatch_generate_variant(
         original_content=row["content"] or "(题目内容)",
         user_answer=row["user_answer"],
         correct_answer=row["correct_answer"],
         wrong_reason=row["wrong_reason"] or "未分析",
+        deepseek_key=keys["deepseek_key"],
     )
 
     # 尝试解析返回的 JSON

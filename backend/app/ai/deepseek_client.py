@@ -1,13 +1,14 @@
-"""DeepSeek V4 Pro API 封装——负责深度答疑、变式出题、学情分析（L2 层）"""
+"""DeepSeek V4 Pro API 封装——负责深度答疑、变式出题、学情分析（L2 层）
 
+所有 API Key 现在由调用方传入，不再从 config 读取。
+"""
 import httpx
 from typing import Optional
 
-from app.config import get_settings
+DEEPSEEK_DEFAULT_BASE = "https://api.deepseek.com/v1"
 
 
 # ---------- 系统提示词模板 ----------
-
 PHYSICS_TUTOR_SYSTEM = """你是一名高中物理 AI 导师。请遵循以下原则：
 1. 用 Socratic 式提问引导思考，而不是直接给答案
 2. 涉及公式时，用 LaTeX $$...$$ 或 $...$ 格式
@@ -45,27 +46,27 @@ async def deepseek_chat(
     content: str,
     system_prompt: str = PHYSICS_TUTOR_SYSTEM,
     temperature: float = 0.7,
+    api_key: str = "",
+    base_url: str = DEEPSEEK_DEFAULT_BASE,
 ) -> dict:
     """
     调用 DeepSeek V4 Pro API 进行深度对话
-
     Args:
         content: 用户输入
         system_prompt: 系统提示词
-        temperature: 生成温度 (0~1)
-
+        temperature: 生成温度
+        api_key: 用户的 DeepSeek API Key
+        base_url: API 基础地址
     Returns:
         {"content": str, "model": str}
     """
-    settings = get_settings()
-
     headers = {
-        "Authorization": f"Bearer {settings.deepseek_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
     payload = {
-        "model": "deepseek-chat",  # DeepSeek V4 Pro 的模型名
+        "model": "deepseek-chat",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": content},
@@ -76,7 +77,7 @@ async def deepseek_chat(
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
-            f"{settings.deepseek_base_url}/chat/completions",
+            f"{base_url}/chat/completions",
             headers=headers,
             json=payload,
         )
@@ -84,24 +85,22 @@ async def deepseek_chat(
         data = resp.json()
 
     reply = data["choices"][0]["message"]["content"]
-
     return {"content": reply, "model": "deepseek-v4-pro"}
 
 
-async def deepseek_flash_chat(content: str) -> dict:
-    """
-    调用 DeepSeek 廉价模型——用于非物理问题的关心/鼓励回复
-    速度快、花费少
-    """
-    settings = get_settings()
-
+async def deepseek_flash_chat(
+    content: str,
+    api_key: str = "",
+    base_url: str = DEEPSEEK_DEFAULT_BASE,
+) -> dict:
+    """调用 DeepSeek 廉价模型"""
     headers = {
-        "Authorization": f"Bearer {settings.deepseek_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
     payload = {
-        "model": "deepseek-chat",  # 标准模型，比 V4 Pro 便宜
+        "model": "deepseek-chat",
         "messages": [
             {
                 "role": "system",
@@ -115,7 +114,7 @@ async def deepseek_flash_chat(content: str) -> dict:
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
-            f"{settings.deepseek_base_url}/chat/completions",
+            f"{base_url}/chat/completions",
             headers=headers,
             json=payload,
         )
@@ -123,7 +122,6 @@ async def deepseek_flash_chat(content: str) -> dict:
         data = resp.json()
 
     reply = data["choices"][0]["message"]["content"]
-
     return {"content": reply, "model": "deepseek-flash"}
 
 
@@ -132,10 +130,11 @@ async def deepseek_generate_variant(
     user_answer: str,
     correct_answer: str,
     wrong_reason: str,
+    api_key: str = "",
+    base_url: str = DEEPSEEK_DEFAULT_BASE,
 ) -> dict:
-    """基于错题生成变式题（返回结构化 JSON）"""
-    prompt = f"""
-# 原始题目
+    """基于错题生成变式题"""
+    prompt = f"""# 原始题目
 {original_content}
 
 # 用户答案（做错了）
@@ -151,31 +150,26 @@ async def deepseek_generate_variant(
 {{"content": "题目内容（支持 LaTeX）",
   "options": ["A. xxx", "B. xxx", "C. xxx", "D. xxx"],
   "correct_answer": "A",
-  "explanation": "解析"}}
-"""
-    result = await deepseek_chat(
+  "explanation": "解析"}}"""
+    return await deepseek_chat(
         content=prompt,
         system_prompt=VARIANT_GENERATOR_SYSTEM,
         temperature=0.8,
+        api_key=api_key,
+        base_url=base_url,
     )
-    return result
 
 
 async def deepseek_analyze_weaknesses(
     error_stats: str,
+    api_key: str = "",
+    base_url: str = DEEPSEEK_DEFAULT_BASE,
 ) -> dict:
-    """
-    分析学情薄弱点
-
-    Args:
-        error_stats: 格式化的错题统计数据文本
-
-    Returns:
-        {"radar_data": [...], "weaknesses": [...], "summary": "..."}
-    """
-    result = await deepseek_chat(
+    """分析学情薄弱点"""
+    return await deepseek_chat(
         content=error_stats,
         system_prompt=ANALYSIS_SYSTEM,
         temperature=0.3,
+        api_key=api_key,
+        base_url=base_url,
     )
-    return result
