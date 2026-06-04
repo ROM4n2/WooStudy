@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:4173",
-        "https://woostudy.vercel.app",  # 生产环境前端域名
+        "https://woo-study.vercel.app",  # 生产环境前端域名
     ]
 
     # ---------- 数据库 ----------
