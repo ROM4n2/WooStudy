@@ -134,28 +134,133 @@ async def get_report(session_id: str, force_refresh: bool = False, user_id: int 
 
 
 async def get_learning_journey(session_id: str) -> dict:
-    """获取学习历程数据（按天组织的学习摘要 + 知识点覆盖）"""
+    """获取学习历程数据（按天组织的学习摘要 + 知识点覆盖 + 活动明细 + 热力图）"""
     db = await get_db()
+
+    # 1. 学习摘要
     cursor = await db.execute(
         """SELECT date, subjects_json, summary_text, updated_at
            FROM learning_summaries
            WHERE session_id = ?
            ORDER BY date DESC
-           LIMIT 30""",
+           LIMIT 60""",
         (session_id,),
     )
-    rows = await cursor.fetchall()
+    summary_rows = await cursor.fetchall()
     await cursor.close()
 
-    days = []
+    summary_map = {}
     all_subjects = set()
-    for r in rows:
+    for r in summary_rows:
         subjects = json.loads(r["subjects_json"]) if r["subjects_json"] else []
         all_subjects.update(subjects)
-        days.append({
-            "date": r["date"],
+        summary_map[r["date"]] = {
             "subjects": subjects,
             "summary": (r["summary_text"] or "")[:200],
+        }
+
+    # 2. 聊天活动统计
+    cursor = await db.execute(
+        """SELECT date(created_at) as day, COUNT(*) as count
+           FROM chat_history
+           WHERE session_id = ? AND role = 'user'
+           GROUP BY day ORDER BY day DESC LIMIT 60""",
+        (session_id,),
+    )
+    chat_rows = await cursor.fetchall()
+    await cursor.close()
+    chat_map = {r["day"]: r["count"] for r in chat_rows}
+
+    # 3. 刷题活动统计
+    cursor = await db.execute(
+        """SELECT date(created_at) as day,
+                  COUNT(*) as total,
+                  SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct
+           FROM error_logs
+           WHERE session_id = ?
+           GROUP BY day ORDER BY day DESC LIMIT 60""",
+        (session_id,),
+    )
+    practice_rows = await cursor.fetchall()
+    await cursor.close()
+    practice_map = {r["day"]: {"total": r["total"], "correct": r["correct"]} for r in practice_rows}
+
+    # 4. 错题复习统计
+    cursor = await db.execute(
+        """SELECT date(updated_at) as day, COUNT(*) as count
+           FROM error_logs
+           WHERE session_id = ? AND reviewed = 1
+           GROUP BY day ORDER BY day DESC LIMIT 60""",
+        (session_id,),
+    )
+    review_rows = await cursor.fetchall()
+    await cursor.close()
+    review_map = {r["day"]: r["count"] for r in review_rows}
+
+    # 5. 实验室统计
+    cursor = await db.execute(
+        """SELECT date(started_at) as day, COUNT(*) as count
+           FROM lab_sessions
+           WHERE session_id = ?
+           GROUP BY day ORDER BY day DESC LIMIT 60""",
+        (session_id,),
+    )
+    lab_rows = await cursor.fetchall()
+    await cursor.close()
+    lab_map = {r["day"]: r["count"] for r in lab_rows}
+
+    # 6. 合并每日数据
+    all_dates = set()
+    all_dates.update(summary_map.keys())
+    all_dates.update(chat_map.keys())
+    all_dates.update(practice_map.keys())
+    all_dates.update(review_map.keys())
+    all_dates.update(lab_map.keys())
+
+    days = []
+    heatmap = {}
+
+    for date_str in sorted(all_dates, reverse=True):
+        summary = summary_map.get(date_str, {})
+        subjects = summary.get("subjects", [])
+        all_subjects.update(subjects)
+
+        chat_count = chat_map.get(date_str, 0)
+        practice = practice_map.get(date_str, {"total": 0, "correct": 0})
+        review_count = review_map.get(date_str, 0)
+        lab_count = lab_map.get(date_str, 0)
+
+        # 计算学习强度 (0~1)
+        activities_count = chat_count + practice["total"] + review_count + lab_count
+        intensity = min(activities_count / 15, 1.0)  # 一天15个活动算满
+
+        # 热力图数据
+        ym = date_str[:7]  # "2026-06"
+        day_num = str(int(date_str[8:10]))  # "4"
+        if ym not in heatmap:
+            heatmap[ym] = {}
+        heatmap[ym][day_num] = round(intensity, 2)
+
+        activities = []
+        if chat_count > 0:
+            activities.append({"type": "chat", "label": "答疑", "count": chat_count})
+        if practice["total"] > 0:
+            rate = round(practice["correct"] / practice["total"] * 100) if practice["total"] > 0 else 0
+            activities.append({
+                "type": "practice", "label": "刷题",
+                "count": practice["total"], "correct": practice["correct"], "rate": rate,
+            })
+        if review_count > 0:
+            activities.append({"type": "review", "label": "复习", "count": review_count})
+        if lab_count > 0:
+            activities.append({"type": "lab", "label": "实验", "count": lab_count})
+
+        days.append({
+            "date": date_str,
+            "subjects": subjects,
+            "summary": summary.get("summary", ""),
+            "activities": activities,
+            "intensity": intensity,
         })
 
     # 学习连续天数
@@ -166,6 +271,7 @@ async def get_learning_journey(session_id: str) -> dict:
         "total_days": len(days),
         "streak": streak,
         "subjects_covered": sorted(all_subjects),
+        "heatmap": heatmap,
     }
 
 
