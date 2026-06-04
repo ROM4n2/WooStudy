@@ -109,7 +109,7 @@ const authStore = useAuthStore()
 const tab = ref('login')
 const copied = ref(false)
 const mimoInviteCode = ref('')
-const mimoRegisterUrl = ref('https://console.xiaomimimo.com/register')
+const mimoRegisterUrl = ref('https://platform.xiaomimimo.com/')
 
 // 登录表单
 const loginForm = ref({ username: '', password: '' })
