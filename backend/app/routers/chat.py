@@ -1,8 +1,9 @@
 """多模态答疑路由"""
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from typing import Optional
 
 from app.schemas.chat import ChatSendRequest
 from app.services import chat_service
@@ -14,6 +15,52 @@ router = APIRouter(prefix="/api/chat", tags=["答疑"])
 
 class OptimizeRequest(BaseModel):
     text: str
+
+
+# ── Session 管理 ──
+
+
+@router.get("/sessions")
+async def list_sessions(
+    session_ids: Optional[str] = Query(None, description="匿名用户：逗号分隔的 session_id 列表"),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """列出当前用户的会话，按日期分组（今天/昨天/本周/更早）"""
+    uid = user.get("user_id") if user else None
+    ids = session_ids.split(",") if session_ids else None
+    result = await chat_service.list_sessions(user_id=uid, session_ids=ids)
+    return JSONResponse(result)
+
+
+class CreateSessionRequest(BaseModel):
+    session_id: str
+
+
+@router.post("/sessions")
+async def create_session(
+    body: CreateSessionRequest,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """创建新会话"""
+    uid = user.get("user_id") if user else None
+    result = await chat_service.create_session(body.session_id, uid)
+    return JSONResponse(result)
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """删除会话及其所有消息"""
+    uid = user.get("user_id") if user else None
+    ok = await chat_service.delete_session(session_id, uid)
+    if not ok:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return JSONResponse({"ok": True})
+
+
+# ── 对话 ──
 
 
 @router.post("/optimize")

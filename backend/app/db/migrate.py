@@ -132,6 +132,24 @@ async def init_db() -> None:
     await db.commit()
     print("[DB] 数据库表结构初始化完成")
 
+    # 运行增量迁移（新加字段）
+    await _run_migrations(db)
+
+
+async def _run_migrations(db) -> None:
+    """增量迁移：给已有表加字段"""
+    migrations = [
+        ("ALTER TABLE sessions ADD COLUMN user_id INTEGER REFERENCES users(id)", "sessions.user_id"),
+        ("ALTER TABLE sessions ADD COLUMN title TEXT DEFAULT '新对话'", "sessions.title"),
+    ]
+    for sql, desc in migrations:
+        try:
+            await db.execute(sql)
+            await db.commit()
+            print(f"[DB] 迁移完成：{desc}")
+        except Exception:
+            pass  # 字段已存在则忽略
+
     # 导入种子题目（如果题库为空）
     cursor = await db.execute("SELECT COUNT(*) FROM questions")
     row = await cursor.fetchone()

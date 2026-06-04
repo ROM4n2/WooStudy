@@ -1,21 +1,12 @@
-/** 用户会话状态——管理 session_id 和设置 */
+/** 用户状态——管理设置 */
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getSettings as fetchSettings, updateSettings as saveSettings } from '../api/settings'
 
-// 生成唯一 session_id（浏览器本地存储以跨页面持久化）
-function generateSessionId() {
-  const stored = localStorage.getItem('woostudy_session_id')
-  if (stored) return stored
-  const id = 'session_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
-  localStorage.setItem('woostudy_session_id', id)
-  return id
-}
-
 export const useUserStore = defineStore('user', () => {
-  const sessionId = ref(generateSessionId())
-  const deepMode = ref(false)  // 深度优先模式
+  const sessionId = ref('')       // 由 ChatView 在加载时从 chat store 同步
+  const deepMode = ref(false)    // 深度优先模式
   const loading = ref(false)
 
   async function loadSettings() {
