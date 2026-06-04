@@ -47,7 +47,7 @@ router.beforeEach((to, from, next) => {
     return
   }
   // 检查是否已通过密码验证
-  const gatePassed = localStorage.getItem('wuzhixue_gate')
+  const gatePassed = localStorage.getItem('woostudy_gate')
   if (gatePassed === 'true') {
     next()
   } else {

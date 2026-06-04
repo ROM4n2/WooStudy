@@ -1,4 +1,4 @@
-"""物知学 — FastAPI 应用入口"""
+"""WooStudy — FastAPI 应用入口"""
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,7 +16,7 @@ from app.routers import chat, errorbook, practice, lab, analysis, settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化 DB，关闭时关闭 DB 连接"""
-    print("[App] 物知学后端启动中...")
+    print("[App] WooStudy 后端启动中...")
     await init_db()
     print("[App] 启动完成")
     yield

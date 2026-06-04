@@ -6,10 +6,10 @@ import { getSettings as fetchSettings, updateSettings as saveSettings } from '..
 
 // 生成唯一 session_id（浏览器本地存储以跨页面持久化）
 function generateSessionId() {
-  const stored = localStorage.getItem('wuzhixue_session_id')
+  const stored = localStorage.getItem('woostudy_session_id')
   if (stored) return stored
   const id = 'session_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
-  localStorage.setItem('wuzhixue_session_id', id)
+  localStorage.setItem('woostudy_session_id', id)
   return id
 }
 

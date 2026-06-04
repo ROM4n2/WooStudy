@@ -3,7 +3,7 @@
     <div class="gate-card">
       <div class="gate-brand">
         <span class="gate-icon">⚛️</span>
-        <h1 class="gate-title">物知学</h1>
+        <h1 class="gate-title">WooStudy</h1>
         <p class="gate-subtitle">高中物理 AI 助学</p>
       </div>
 
@@ -53,11 +53,11 @@ const checking = ref(false)
 const authed = ref(false)
 
 // 从环境变量读取密码（Vercel dashboard 中设置 VITE_ACCESS_PASSWORD）
-const ACCESS_PASSWORD = import.meta.env.VITE_ACCESS_PASSWORD || 'wuzhixue'
+const ACCESS_PASSWORD = import.meta.env.VITE_ACCESS_PASSWORD || 'woostudy'
 
 onMounted(async () => {
   // 检查 localStorage 是否已认证
-  const gatePassed = localStorage.getItem('wuzhixue_gate')
+  const gatePassed = localStorage.getItem('woostudy_gate')
   if (gatePassed === 'true') {
     authed.value = true
     // delay then auto-enter
@@ -75,7 +75,7 @@ function handleSubmit() {
   // 模拟短暂延迟，防止暴力穷举（纯前端验证，聊胜于无）
   setTimeout(() => {
     if (password.value === ACCESS_PASSWORD) {
-      localStorage.setItem('wuzhixue_gate', 'true')
+      localStorage.setItem('woostudy_gate', 'true')
       authed.value = true
       setTimeout(() => enterApp(), 600)
     } else {

@@ -1,4 +1,4 @@
-# 📘 物知学 — 高中物理 AI 助学
+# 📘 WooStudy — 高中物理 AI 助学
 
 > 基于 Vue3 + FastAPI + SQLite 的高中物理 AI 助学 Web 应用。  
 > 含多模态答疑、AI 错题本、智能刷题、虚拟仿真实验室四大模块。  
@@ -9,7 +9,7 @@
 ## 项目结构
 
 ```
-物知学/
+WooStudy/
 ├── backend/                     # FastAPI 后端
 │   ├── app/
 │   │   ├── main.py              # 入口 + CORS + 路由注册
@@ -76,7 +76,7 @@ npm install
 npm run dev
 ```
 
-前端运行在 `http://localhost:5173`
+前端运行在 `http://localhost:5173`，访问密码默认 `woostudy`
 
 ---
 
@@ -103,7 +103,7 @@ npm run dev
 
 ---
 
-## 四大模块
+## 五大模块
 
 | 模块 | 路径 | 功能 |
 |------|------|------|
@@ -154,7 +154,7 @@ npm run dev
    *\* 两个 API Key 至少填一个，或 `MOCK_MODE=true` 跳过*
 
 3. Railway 自动识别 `Dockerfile` 构建部署
-4. 部署后获得 Railway 域名（如 `https://wuzhixue-prod.up.railway.app`）
+4. 部署后获得 Railway 域名（如 `https://woostudy-prod.up.railway.app`）
 
 ### Vercel（前端）
 
@@ -165,8 +165,8 @@ npm run dev
 
    | 变量 | 必填 | 说明 |
    |------|------|------|
-   | `VITE_API_BASE` | ✅ | Railway 后端地址（如 `https://wuzhixue-prod.up.railway.app`） |
-   | `VITE_ACCESS_PASSWORD` | ✅ | 访问密码（小范围分享用） |
+   | `VITE_API_BASE` | ✅ | Railway 后端地址（如 `https://woostudy-prod.up.railway.app`） |
+   | `VITE_ACCESS_PASSWORD` | ✅ | 访问密码 |
 
 3. 框架预设选择 **Vite**
 4. 部署后即可通过 Vercel 域名访问

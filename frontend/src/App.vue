@@ -4,7 +4,7 @@
       <div class="nav-brand">
         <span class="brand-icon">⚛️</span>
         <div class="brand-text-group">
-          <span class="brand-text">物知学</span>
+          <span class="brand-text">WooStudy</span>
           <span class="brand-tag">高中物理 AI 助学</span>
         </div>
       </div>

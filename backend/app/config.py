@@ -14,16 +14,16 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     # ---------- 应用配置 ----------
-    app_name: str = "物知学"
+    app_name: str = "WooStudy"
     debug: bool = True
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:4173",
-        "https://wuzhixue.vercel.app",  # 生产环境前端域名
+        "https://woostudy.vercel.app",  # 生产环境前端域名
     ]
 
     # ---------- 数据库 ----------
-    database_url: str = "sqlite+aiosqlite:///./wuzhixue.db"
+    database_url: str = "sqlite+aiosqlite:///./woostudy.db"
 
     # ---------- 图片上传 ----------
     max_upload_images: int = 2
