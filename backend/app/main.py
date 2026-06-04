@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.db.database import close_db
 from app.db.migrate import init_db
-from app.routers import chat, errorbook, practice, lab, analysis, settings, auth
+from app.routers import chat, errorbook, practice, lab, analysis, settings, auth, knowledge
 
 
 @asynccontextmanager
@@ -55,6 +55,7 @@ app.include_router(lab.router)
 app.include_router(analysis.router)
 app.include_router(settings.router)
 app.include_router(auth.router)
+app.include_router(knowledge.router)
 
 
 @app.get("/api/health")

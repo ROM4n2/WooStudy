@@ -37,6 +37,11 @@ const routes = [
     name: 'journey',
     component: () => import('../views/JourneyView.vue'),
   },
+  {
+    path: '/knowledge',
+    name: 'knowledge',
+    component: () => import('../views/KnowledgeGraphView.vue'),
+  },
 ]
 
 const router = createRouter({

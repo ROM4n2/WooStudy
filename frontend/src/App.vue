@@ -34,6 +34,10 @@
             <span class="nav-icon">📅</span>
             <span class="nav-label">历程</span>
           </router-link>
+          <router-link to="/knowledge" class="nav-link">
+            <span class="nav-icon">🧠</span>
+            <span class="nav-label">图谱</span>
+          </router-link>
         </div>
         <div v-if="authStore.isLoggedIn" class="user-area">
           <button class="settings-btn" @click="showSettings = !showSettings" title="设置">
