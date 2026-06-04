@@ -4,7 +4,7 @@ import axios from 'axios'
 // 开发环境用 Vite 本地代理，生产环境优先读 env 变量，兜底指向 Railway
 const API_BASE = import.meta.env.DEV
   ? '/api'
-  : (import.meta.env.VITE_API_BASE || 'https://woostudy-production.up.railway.app')
+  : (import.meta.env.VITE_API_BASE || 'https://woostudy-production.up.railway.app/api')
 
 const request = axios.create({
   baseURL: API_BASE,
