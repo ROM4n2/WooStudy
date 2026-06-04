@@ -1,7 +1,7 @@
 """学情分析服务——做题统计 + AI 深度分析"""
 
 import json
-from app.db.database import get_db
+from app.db.database import get_db, db_execute, db_fetch_all, db_fetch_one
 from app.ai.dispatcher import dispatch_analyze
 from app.services import get_user_api_keys
 
@@ -9,11 +9,9 @@ from app.services import get_user_api_keys
 async def _ensure_session(session_id: str) -> None:
     """如果 session 不存在则创建"""
     db = await get_db()
-    cursor = await db.execute("SELECT id FROM sessions WHERE session_id = ?", (session_id,))
-    row = await cursor.fetchone()
-    await cursor.close()
+    row = await db_fetch_one("SELECT id FROM sessions WHERE session_id = ?", (session_id,))
     if row is None:
-        await db.execute("INSERT INTO sessions (session_id) VALUES (?)", (session_id,))
+        await db_execute("INSERT INTO sessions (session_id) VALUES (?)", (session_id,))
         await db.commit()
 
 
@@ -29,19 +27,17 @@ async def get_report(session_id: str, force_refresh: bool = False, user_id: int 
 
     # 1. 检查缓存
     if not force_refresh:
-        cursor = await db.execute(
+        cached = await db_fetch_one(
             "SELECT report_json, generated_at FROM analysis_cache WHERE session_id = ?",
             (session_id,),
         )
-        cached = await cursor.fetchone()
-        await cursor.close()
         if cached:
             # 检查是否 5 分钟内生成的
             # todo: 更精确的时间判断
             return json.loads(cached["report_json"])
 
     # 2. 统计各科错题数据
-    cursor = await db.execute(
+    stats_rows = await db_fetch_all(
         """SELECT subject,
                   COUNT(*) as total,
                   SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct_count
@@ -49,18 +45,14 @@ async def get_report(session_id: str, force_refresh: bool = False, user_id: int 
            GROUP BY subject""",
         (session_id,),
     )
-    stats_rows = await cursor.fetchall()
-    await cursor.close()
 
     # 总统计
-    cursor = await db.execute(
+    total_row = await db_fetch_one(
         """SELECT COUNT(*) as total,
                   SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct_count
            FROM error_logs WHERE session_id = ?""",
         (session_id,),
     )
-    total_row = await cursor.fetchone()
-    await cursor.close()
 
     total_questions = total_row["total"] or 0
     total_correct = total_row["correct_count"] or 0
@@ -79,7 +71,7 @@ async def get_report(session_id: str, force_refresh: bool = False, user_id: int 
         })
 
     # 获取具体的错题信息
-    cursor = await db.execute(
+    wrong_rows = await db_fetch_all(
         """SELECT q.content, e.user_answer, q.correct_answer, e.wrong_reason, e.subject
            FROM error_logs e
            LEFT JOIN questions q ON e.question_id = q.id
@@ -87,8 +79,6 @@ async def get_report(session_id: str, force_refresh: bool = False, user_id: int 
            LIMIT 10""",
         (session_id,),
     )
-    wrong_rows = await cursor.fetchall()
-    await cursor.close()
 
     if wrong_rows:
         stats_text += "\n典型错题示例：\n"
@@ -124,7 +114,7 @@ async def get_report(session_id: str, force_refresh: bool = False, user_id: int 
 
     # 6. 写入缓存（确保 session 存在以符合外键约束）
     await _ensure_session(session_id)
-    await db.execute(
+    await db_execute(
         "INSERT OR REPLACE INTO analysis_cache (session_id, report_json, generated_at) VALUES (?, ?, datetime('now'))",
         (session_id, json.dumps(report, ensure_ascii=False)),
     )
@@ -135,10 +125,8 @@ async def get_report(session_id: str, force_refresh: bool = False, user_id: int 
 
 async def get_learning_journey(session_id: str) -> dict:
     """获取学习历程数据（按天组织的学习摘要 + 知识点覆盖 + 活动明细 + 热力图）"""
-    db = await get_db()
-
     # 1. 学习摘要
-    cursor = await db.execute(
+    summary_rows = await db_fetch_all(
         """SELECT date, subjects_json, summary_text, updated_at
            FROM learning_summaries
            WHERE session_id = ?
@@ -146,8 +134,6 @@ async def get_learning_journey(session_id: str) -> dict:
            LIMIT 60""",
         (session_id,),
     )
-    summary_rows = await cursor.fetchall()
-    await cursor.close()
 
     summary_map = {}
     all_subjects = set()
@@ -160,19 +146,17 @@ async def get_learning_journey(session_id: str) -> dict:
         }
 
     # 2. 聊天活动统计
-    cursor = await db.execute(
+    chat_rows = await db_fetch_all(
         """SELECT date(created_at) as day, COUNT(*) as count
            FROM chat_history
            WHERE session_id = ? AND role = 'user'
            GROUP BY day ORDER BY day DESC LIMIT 60""",
         (session_id,),
     )
-    chat_rows = await cursor.fetchall()
-    await cursor.close()
     chat_map = {r["day"]: r["count"] for r in chat_rows}
 
     # 3. 刷题活动统计
-    cursor = await db.execute(
+    practice_rows = await db_fetch_all(
         """SELECT date(created_at) as day,
                   COUNT(*) as total,
                   SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct
@@ -181,32 +165,26 @@ async def get_learning_journey(session_id: str) -> dict:
            GROUP BY day ORDER BY day DESC LIMIT 60""",
         (session_id,),
     )
-    practice_rows = await cursor.fetchall()
-    await cursor.close()
     practice_map = {r["day"]: {"total": r["total"], "correct": r["correct"]} for r in practice_rows}
 
     # 4. 错题复习统计
-    cursor = await db.execute(
+    review_rows = await db_fetch_all(
         """SELECT date(updated_at) as day, COUNT(*) as count
            FROM error_logs
            WHERE session_id = ? AND reviewed = 1
            GROUP BY day ORDER BY day DESC LIMIT 60""",
         (session_id,),
     )
-    review_rows = await cursor.fetchall()
-    await cursor.close()
     review_map = {r["day"]: r["count"] for r in review_rows}
 
     # 5. 实验室统计
-    cursor = await db.execute(
+    lab_rows = await db_fetch_all(
         """SELECT date(started_at) as day, COUNT(*) as count
            FROM lab_sessions
            WHERE session_id = ?
            GROUP BY day ORDER BY day DESC LIMIT 60""",
         (session_id,),
     )
-    lab_rows = await cursor.fetchall()
-    await cursor.close()
     lab_map = {r["day"]: r["count"] for r in lab_rows}
 
     # 6. 合并每日数据

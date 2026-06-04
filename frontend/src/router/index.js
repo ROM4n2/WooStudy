@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { STORAGE_KEYS } from '../constants/keys'
 import ChatView from '../views/ChatView.vue'
 
 const routes = [
@@ -42,6 +43,11 @@ const routes = [
     name: 'knowledge',
     component: () => import('../views/KnowledgeGraphView.vue'),
   },
+  {
+    path: '/contribute',
+    name: 'contribute',
+    component: () => import('../views/ContributorView.vue'),
+  },
 ]
 
 const router = createRouter({
@@ -55,7 +61,7 @@ router.beforeEach((to, from, next) => {
     next()
     return
   }
-  const token = localStorage.getItem('woostudy_token')
+  const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
   if (token) {
     next()
   } else {

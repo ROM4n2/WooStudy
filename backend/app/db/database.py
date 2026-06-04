@@ -2,6 +2,7 @@
 
 import aiosqlite
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from app.config import get_settings
@@ -46,3 +47,46 @@ async def get_db_cursor():
         raise
     finally:
         await cursor.close()
+
+
+async def db_execute(sql: str, params=None):
+    """执行 SQL（INSERT/UPDATE/DELETE），自动管理 cursor"""
+    db = await get_db()
+    cursor = await db.execute(sql, params or ())
+    await cursor.close()
+    return cursor
+
+
+async def db_fetch_all(sql: str, params=None):
+    """查询多行，自动管理 cursor"""
+    db = await get_db()
+    cursor = await db.execute(sql, params or ())
+    try:
+        return await cursor.fetchall()
+    finally:
+        await cursor.close()
+
+
+async def db_fetch_one(sql: str, params=None):
+    """查询单行，自动管理 cursor"""
+    db = await get_db()
+    cursor = await db.execute(sql, params or ())
+    try:
+        return await cursor.fetchone()
+    finally:
+        await cursor.close()
+
+
+def parse_sqlite_dt(text: str | None) -> datetime | None:
+    """解析 SQLite 日期字符串（'YYYY-MM-DD HH:MM:SS' 或 ISO 8601），返回 datetime"""
+    if not text:
+        return None
+    # SQLite 的 datetime('now') 输出格式是 'YYYY-MM-DD HH:MM:SS'，缺 T
+    # Python 3.11+ 的 fromisoformat 可以处理，但为了兼容保证，统一替换空格为 T
+    return datetime.fromisoformat(text.replace(" ", "T"))
+
+
+def parse_sqlite_date(text: str | None) -> datetime.date | None:
+    """解析 SQLite 日期字符串，返回 date"""
+    dt = parse_sqlite_dt(text)
+    return dt.date() if dt else None

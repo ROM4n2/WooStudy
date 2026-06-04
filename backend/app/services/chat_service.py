@@ -7,27 +7,26 @@ from typing import Optional
 from datetime import date, datetime, timedelta
 
 from app.ai.dispatcher import dispatch_chat, dispatch_followup_chat
-from app.db.database import get_db
+from app.db.database import get_db, db_execute, db_fetch_all, db_fetch_one, parse_sqlite_date
 from app.config import get_settings
 from app.services import get_user_api_keys
 
 
 async def list_sessions(user_id: Optional[int] = None, session_ids: Optional[list[str]] = None) -> dict:
     """列出会话，按日期分组（今天、昨天、本周、更早）"""
-    db = await get_db()
     today = date.today()
     yesterday = today - timedelta(days=1)
     week_start = today - timedelta(days=today.weekday())
 
     if user_id:
-        cursor = await db.execute(
+        rows = await db_fetch_all(
             "SELECT session_id, title, created_at, updated_at FROM sessions "
             "WHERE user_id = ? ORDER BY updated_at DESC",
             (user_id,),
         )
     elif session_ids:
         placeholders = ",".join("?" for _ in session_ids)
-        cursor = await db.execute(
+        rows = await db_fetch_all(
             f"SELECT session_id, title, created_at, updated_at FROM sessions "
             f"WHERE session_id IN ({placeholders}) ORDER BY updated_at DESC",
             session_ids,
@@ -35,12 +34,9 @@ async def list_sessions(user_id: Optional[int] = None, session_ids: Optional[lis
     else:
         return {"groups": {}}
 
-    rows = await cursor.fetchall()
-    await cursor.close()
-
     groups = {"今天": [], "昨天": [], "本周": [], "更早": []}
     for row in rows:
-        updated = datetime.fromisoformat(row["updated_at"]).date() if row["updated_at"] else today
+        updated = parse_sqlite_date(row["updated_at"]) or today
         session_data = {
             "session_id": row["session_id"],
             "title": row["title"] or "新对话",
@@ -63,7 +59,7 @@ async def list_sessions(user_id: Optional[int] = None, session_ids: Optional[lis
 async def create_session(session_id: str, user_id: Optional[int] = None) -> dict:
     """创建新会话"""
     db = await get_db()
-    await db.execute(
+    await db_execute(
         "INSERT OR IGNORE INTO sessions (session_id, user_id, title, updated_at) VALUES (?, ?, ?, datetime('now'))",
         (session_id, user_id, "新对话"),
     )
@@ -76,20 +72,18 @@ async def delete_session(session_id: str, user_id: Optional[int] = None) -> bool
     db = await get_db()
     # 验证归属
     if user_id:
-        cursor = await db.execute(
+        row = await db_fetch_one(
             "SELECT id FROM sessions WHERE session_id = ? AND user_id = ?", (session_id, user_id)
         )
     else:
-        cursor = await db.execute(
+        row = await db_fetch_one(
             "SELECT id FROM sessions WHERE session_id = ?", (session_id,)
         )
-    row = await cursor.fetchone()
-    await cursor.close()
     if not row:
         return False
 
-    await db.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
-    await db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+    await db_execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+    await db_execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
     await db.commit()
     return True
 
@@ -97,7 +91,7 @@ async def delete_session(session_id: str, user_id: Optional[int] = None) -> bool
 async def _auto_set_title(db, session_id: str, first_content: str) -> None:
     """从第一条用户消息自动生成会话标题"""
     title = first_content.strip()[:30] if first_content.strip() else "图片提问"
-    await db.execute(
+    await db_execute(
         "UPDATE sessions SET title = ? WHERE session_id = ? AND (title IS NULL OR title = '新对话')",
         (title, session_id),
     )
@@ -128,7 +122,7 @@ async def send_message(
         file_path.write_bytes(image_data)
         image_url = f"/uploads/{filename}"
 
-    await db.execute(
+    await db_execute(
         "INSERT INTO chat_history (session_id, role, content, image_url) VALUES (?, ?, ?, ?)",
         (session_id, "user", content or "(图片)", image_url),
     )
@@ -159,12 +153,12 @@ async def send_message(
         )
 
     # 保存 AI 回答
-    await db.execute(
+    await db_execute(
         "INSERT INTO chat_history (session_id, role, content, model_used, confidence) VALUES (?, ?, ?, ?, ?)",
         (session_id, "assistant", ai_result["content"], ai_result["model_used"], ai_result["confidence"]),
     )
 
-    await db.execute(
+    await db_execute(
         "UPDATE sessions SET updated_at = datetime('now') WHERE session_id = ?",
         (session_id,),
     )
@@ -181,12 +175,10 @@ async def send_message(
 
 async def get_recent_messages(db, session_id: str, limit: int = 10) -> dict:
     """获取最近对话（用于追问上下文）"""
-    cursor = await db.execute(
+    rows = await db_fetch_all(
         "SELECT role, content FROM chat_history WHERE session_id = ? ORDER BY id DESC LIMIT ?",
         (session_id, limit),
     )
-    rows = await cursor.fetchall()
-    await cursor.close()
     messages = [
         {"role": row["role"], "content": row["content"]}
         for row in reversed(rows)
@@ -197,22 +189,20 @@ async def get_recent_messages(db, session_id: str, limit: int = 10) -> dict:
 async def _save_learning_summary(db, session_id: str, summary: str) -> None:
     """保存今日学习摘要"""
     today = date.today().isoformat()
-    cursor = await db.execute(
+    row = await db_fetch_one(
         "SELECT id, subjects_json, summary_text FROM learning_summaries WHERE session_id = ? AND date = ?",
         (session_id, today),
     )
-    row = await cursor.fetchone()
-    await cursor.close()
 
     if row:
         existing = row["summary_text"] or ""
         new_text = existing + "\n" + summary if existing else summary
-        await db.execute(
+        await db_execute(
             "UPDATE learning_summaries SET summary_text = ?, updated_at = datetime('now') WHERE id = ?",
             (new_text[:1000], row["id"]),
         )
     else:
-        await db.execute(
+        await db_execute(
             "INSERT INTO learning_summaries (session_id, date, summary_text) VALUES (?, ?, ?)",
             (session_id, today, summary[:1000]),
         )
@@ -220,14 +210,11 @@ async def _save_learning_summary(db, session_id: str, summary: str) -> None:
 
 async def get_history(session_id: str, limit: int = 50) -> dict:
     """获取对话历史"""
-    db = await get_db()
-    cursor = await db.execute(
+    rows = await db_fetch_all(
         "SELECT id, role, content, image_url, model_used, created_at "
         "FROM chat_history WHERE session_id = ? ORDER BY id DESC LIMIT ?",
         (session_id, limit),
     )
-    rows = await cursor.fetchall()
-    await cursor.close()
     messages = [
         {
             "id": row["id"],
@@ -244,12 +231,10 @@ async def get_history(session_id: str, limit: int = 50) -> dict:
 
 async def _ensure_session(db, session_id: str, user_id: Optional[int] = None, content: str = "") -> None:
     """如果 session 不存在则创建，并从首条消息自动命名"""
-    cursor = await db.execute("SELECT id FROM sessions WHERE session_id = ?", (session_id,))
-    row = await cursor.fetchone()
-    await cursor.close()
+    row = await db_fetch_one("SELECT id FROM sessions WHERE session_id = ?", (session_id,))
     if row is None:
         title = content.strip()[:30] if content.strip() else "新对话"
-        await db.execute(
+        await db_execute(
             "INSERT INTO sessions (session_id, user_id, title) VALUES (?, ?, ?)",
             (session_id, user_id, title),
         )

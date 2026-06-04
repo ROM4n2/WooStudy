@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 
-from app.db.database import get_db
+from app.db.database import get_db, db_execute, db_fetch_one
 
 
 CREATE_TABLES_SQL = """
@@ -168,7 +168,7 @@ async def init_db() -> None:
     for statement in CREATE_TABLES_SQL.split(";"):
         stmt = statement.strip()
         if stmt:
-            await db.execute(stmt + ";")
+            await db_execute(stmt + ";")
     await db.commit()
     print("[DB] 数据库表结构初始化完成")
 
@@ -182,10 +182,11 @@ async def _run_migrations(db) -> None:
         ("ALTER TABLE sessions ADD COLUMN user_id INTEGER REFERENCES users(id)", "sessions.user_id"),
         ("ALTER TABLE sessions ADD COLUMN title TEXT DEFAULT '新对话'", "sessions.title"),
         ("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'", "users.role"),
+        ("ALTER TABLE knowledge_nodes ADD COLUMN status TEXT DEFAULT 'approved' CHECK(status IN ('pending','approved','rejected'))", "knowledge_nodes.status"),
     ]
     for sql, desc in migrations:
         try:
-            await db.execute(sql)
+            await db_execute(sql)
             await db.commit()
             print(f"[DB] 迁移完成：{desc}")
         except Exception:
@@ -195,11 +196,9 @@ async def _run_migrations(db) -> None:
     admin_user = os.environ.get("ADMIN_USERNAME", "").strip()
     if admin_user:
         try:
-            cursor = await db.execute("SELECT id, role FROM users WHERE username = ?", (admin_user,))
-            row = await cursor.fetchone()
-            await cursor.close()
+            row = await db_fetch_one("SELECT id, role FROM users WHERE username = ?", (admin_user,))
             if row and row["role"] != "admin":
-                await db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (row["id"],))
+                await db_execute("UPDATE users SET role = 'admin' WHERE id = ?", (row["id"],))
                 await db.commit()
                 print(f"[DB] 已将 [{admin_user}] 设为管理员")
             elif row:
@@ -210,21 +209,18 @@ async def _run_migrations(db) -> None:
             print(f"[DB] 自动设管理员失败: {e}")
 
     # 导入种子题目（如果题库为空）
-    cursor = await db.execute("SELECT COUNT(*) FROM questions")
-    row = await cursor.fetchone()
-    if row[0] == 0:
-        await _seed_questions(db)
-    await cursor.close()
+    row = await db_fetch_one("SELECT COUNT(*) FROM questions")
+    if row and row[0] == 0:
+        await _seed_questions()
+
 
     # 导入知识图谱种子数据（如果知识节点表为空）
-    cursor2 = await db.execute("SELECT COUNT(*) FROM knowledge_nodes")
-    row2 = await cursor2.fetchone()
-    await cursor2.close()
-    if row2[0] == 0:
-        await _seed_knowledge_graph(db)
+    row2 = await db_fetch_one("SELECT COUNT(*) FROM knowledge_nodes")
+    if row2 and row2[0] == 0:
+        await _seed_knowledge_graph()
 
 
-async def _seed_questions(db) -> None:
+async def _seed_questions() -> None:
     """从 seed_data/questions.json 导入初始题库"""
     seed_path = Path(__file__).parent.parent.parent / "seed_data" / "questions.json"
     if not seed_path.exists():
@@ -235,7 +231,7 @@ async def _seed_questions(db) -> None:
         questions = json.load(f)
 
     for q in questions:
-        await db.execute(
+        await db_execute(
             """INSERT INTO questions (content, question_type, options_json, correct_answer,
                explanation, subject, difficulty, tags_json, source)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -255,7 +251,7 @@ async def _seed_questions(db) -> None:
     print(f"[DB] 已从 seed_data/questions.json 导入 {len(questions)} 道种子题目")
 
 
-async def _seed_knowledge_graph(db) -> None:
+async def _seed_knowledge_graph() -> None:
     """从 seed_data/knowledge_graph.json 导入初始知识图谱"""
     seed_path = Path(__file__).parent.parent.parent / "seed_data" / "knowledge_graph.json"
     if not seed_path.exists():
@@ -275,7 +271,7 @@ async def _seed_knowledge_graph(db) -> None:
 
     count = 0
     for n in nodes:
-        await db.execute(
+        await db_execute(
             """INSERT OR IGNORE INTO knowledge_nodes
                (id, label, category, subject, parent_id, description, importance, source)
                VALUES (?, ?, ?, ?, ?, ?, ?, 'system')""",
@@ -290,7 +286,7 @@ async def _seed_knowledge_graph(db) -> None:
         if key in existing_set:
             continue
         existing_set.add(key)
-        await db.execute(
+        await db_execute(
             """INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, type, label)
                VALUES (?, ?, ?, ?)""",
             (e["source"], e["target"], e.get("type", "contains"), e.get("label", "")),
@@ -302,7 +298,7 @@ async def _seed_knowledge_graph(db) -> None:
             key = (parent, n["id"], "contains")
             if key not in existing_set:
                 existing_set.add(key)
-                await db.execute(
+                await db_execute(
                     "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, type) VALUES (?, ?, 'contains')",
                     (parent, n["id"]),
                 )

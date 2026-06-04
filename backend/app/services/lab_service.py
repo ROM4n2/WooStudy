@@ -1,6 +1,6 @@
 """虚拟实验室服务——实验列表 + 会话记录"""
 
-from app.db.database import get_db
+from app.db.database import get_db, db_execute, db_fetch_one
 
 # PhET 仿真列表（可免费嵌入 iframe）
 # 来源：https://phet.colorado.edu/en/simulations/filter?sort=alpha&view=grid
@@ -77,22 +77,20 @@ async def record_session(
 ) -> dict:
     """记录用户在某个实验上的会话时长"""
     db = await get_db()
-    cursor = await db.execute(
+    existing = await db_fetch_one(
         "SELECT id FROM lab_sessions WHERE session_id = ? AND lab_name = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
         (session_id, lab_name),
     )
-    existing = await cursor.fetchone()
-    await cursor.close()
 
     if existing:
         # 更新结束时间
-        await db.execute(
+        await db_execute(
             "UPDATE lab_sessions SET ended_at = datetime('now'), duration_seconds = ? WHERE id = ?",
             (duration_seconds, existing["id"]),
         )
     else:
         # 新建记录
-        await db.execute(
+        await db_execute(
             "INSERT INTO lab_sessions (session_id, lab_name, lab_title, duration_seconds) VALUES (?, ?, ?, ?)",
             (session_id, lab_name, lab_title, duration_seconds),
         )

@@ -1,5 +1,5 @@
 <template>
-  <div class="journey-view">
+  <div class="journey-view page-ambient fade-in-up">
     <div class="page-header">
       <h2>📅 学习历程</h2>
       <div class="header-period">

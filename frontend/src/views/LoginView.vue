@@ -215,6 +215,7 @@ async function copyInviteCode() {
 </script>
 
 <style scoped>
+/* ══ 登录页（深色渐变氛围） ══ */
 .login-page {
   min-height: 100vh;
   display: flex;
@@ -223,37 +224,45 @@ async function copyInviteCode() {
   padding: 24px;
   background: var(--bg-page);
   background-image:
-    linear-gradient(rgba(27, 42, 74, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(27, 42, 74, 0.025) 1px, transparent 1px);
-  background-size: 24px 24px;
+    radial-gradient(ellipse at 20% 50%, rgba(217, 119, 6, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(27, 42, 74, 0.03) 0%, transparent 50%),
+    linear-gradient(rgba(27, 42, 74, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(27, 42, 74, 0.02) 1px, transparent 1px);
+  background-size: auto, auto, 28px 28px, 28px 28px;
   background-position: -1px -1px;
 }
 
 .login-card {
-  background: var(--surface);
+  background: var(--surface-glass);
+  backdrop-filter: blur(16px);
   border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: 40px 36px 32px;
+  border-radius: var(--radius-2xl);
+  padding: 44px 40px 36px;
   width: 100%;
   max-width: 440px;
   box-shadow: var(--shadow-lg);
-  animation: slideUp 0.5s ease-out;
+  animation: cardIn 0.55s var(--ease-out-soft);
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
+/* ══ 品牌区 ══ */
 .login-brand {
   text-align: center;
   margin-bottom: 28px;
 }
 .brand-icon {
-  font-size: 44px;
+  font-size: 48px;
   display: block;
   margin-bottom: 10px;
   line-height: 1;
+  animation: brandFloat 3s var(--ease-out-soft) infinite;
+}
+@keyframes brandFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
 }
 .brand-title {
   font-family: var(--font-display);
@@ -262,6 +271,10 @@ async function copyInviteCode() {
   color: var(--ink-900);
   letter-spacing: 0.04em;
   margin: 0 0 4px;
+  background: var(--grad-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 .brand-subtitle {
   font-size: 14px;
@@ -269,47 +282,41 @@ async function copyInviteCode() {
   margin: 0;
 }
 
-/* Tab 切换 */
+/* ══ Tab 切换（胶囊式） ══ */
 .tab-bar {
   display: flex;
-  gap: 0;
+  gap: 4px;
   margin-bottom: 24px;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  border: 1.5px solid var(--neutral-200);
+  padding: 4px;
+  border-radius: var(--radius);
+  background: var(--neutral-100);
 }
 .tab {
   flex: 1;
-  padding: 10px;
+  padding: 9px;
   border: none;
-  background: var(--surface);
+  background: transparent;
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 600;
   color: var(--neutral-500);
   cursor: pointer;
-  transition: all 0.2s;
-}
-.tab:first-child {
-  border-right: 1px solid var(--neutral-200);
+  transition: all var(--duration-normal) var(--ease-out-soft);
+  border-radius: var(--radius-sm);
 }
 .tab.active {
-  background: var(--ink-900);
-  color: #fff;
+  background: var(--surface);
+  color: var(--ink-900);
+  box-shadow: var(--shadow-xs);
 }
 
-/* 表单 */
+/* ══ 表单 ══ */
 .login-form {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
+.field { display: flex; flex-direction: column; gap: 5px; }
 .field-label {
   font-size: 13px;
   font-weight: 600;
@@ -323,24 +330,24 @@ async function copyInviteCode() {
   font-weight: 500;
   color: var(--ink-700);
   text-decoration: none;
+  transition: color var(--duration-fast);
 }
-.field-link:hover {
-  text-decoration: underline;
-}
+.field-link:hover { color: var(--ink-900); text-decoration: underline; }
+
 .field-input {
   padding: 10px 14px;
   border: 1.5px solid var(--neutral-300);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   font-family: var(--font-body);
   font-size: 14px;
   color: var(--text-primary);
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all var(--duration-normal) var(--ease-out-soft);
   background: var(--bg-elevated);
 }
 .field-input:focus {
-  border-color: var(--ink-700);
-  box-shadow: 0 0 0 3px rgba(43, 74, 122, 0.08);
+  border-color: var(--amber-500);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.08);
 }
 
 .field-divider {
@@ -365,40 +372,42 @@ async function copyInviteCode() {
   font-weight: 600;
   color: var(--neutral-500);
 }
-
 .field-hint {
   font-size: 12px;
   color: var(--neutral-400);
   margin: -8px 0 0;
   text-align: center;
 }
-
 .form-error {
   font-size: 13px;
   color: var(--rose-600);
   margin: 0;
   text-align: center;
+  font-weight: 500;
 }
 
 .submit-btn {
   padding: 12px;
-  background: var(--ink-900);
+  background: var(--grad-primary);
   color: #fff;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   font-family: var(--font-body);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--duration-normal) var(--ease-out-soft);
   margin-top: 4px;
+  box-shadow: 0 2px 8px rgba(27, 42, 74, 0.12);
 }
 .submit-btn:hover:not(:disabled) {
-  background: var(--ink-800);
+  box-shadow: 0 4px 16px rgba(27, 42, 74, 0.18);
+  transform: translateY(-1px);
 }
 .submit-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  transform: none;
 }
 
 .form-switch {
@@ -412,27 +421,20 @@ async function copyInviteCode() {
   font-weight: 600;
   text-decoration: none;
 }
-.form-switch a:hover {
-  text-decoration: underline;
-}
+.form-switch a:hover { text-decoration: underline; }
 
-/* Mimo 邀请码卡片 */
+/* ══ Mimo 邀请码卡片 ══ */
 .invite-card {
   display: flex;
   gap: 12px;
   padding: 14px;
-  background: var(--amber-50);
-  border: 1px solid var(--amber-400);
+  background: linear-gradient(135deg, var(--amber-50) 0%, var(--bg-elevated) 100%);
+  border: 1px solid var(--amber-200);
   border-left: 4px solid var(--amber-600);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
 }
-.invite-icon {
-  font-size: 28px;
-  line-height: 1;
-}
-.invite-body {
-  flex: 1;
-}
+.invite-icon { font-size: 28px; line-height: 1; }
+.invite-body { flex: 1; }
 .invite-title {
   font-weight: 700;
   font-size: 14px;
@@ -472,13 +474,10 @@ async function copyInviteCode() {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: all var(--duration-fast);
 }
-.copy-btn:hover {
-  background: #B45309;
-}
+.copy-btn:hover { background: var(--amber-700); }
 
-/* 支持弹窗触发按钮 */
 .support-trigger {
   margin-top: 10px;
   padding: 0;
@@ -490,41 +489,40 @@ async function copyInviteCode() {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
-  text-decoration-color: var(--amber-400);
-  transition: color 0.15s;
+  text-decoration-color: var(--amber-300);
+  transition: color var(--duration-fast);
 }
-.support-trigger:hover {
-  color: #92400E;
-}
+.support-trigger:hover { color: #92400E; }
 
-/* 弹窗遮罩 */
+/* ══ 弹窗遮罩 ══ */
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.45);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
   padding: 24px;
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn 0.2s var(--ease-out-soft);
 }
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* 弹窗卡片 */
 .modal-card {
-  background: #fff;
-  border-radius: 16px;
+  background: var(--surface);
+  border-radius: var(--radius-xl);
   padding: 36px 32px 28px;
   max-width: 400px;
   width: 100%;
   text-align: center;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-  animation: slideUp 0.3s ease-out;
+  box-shadow: var(--shadow-xl);
+  animation: modalIn 0.35s var(--ease-spring);
   position: relative;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.92) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 .modal-close {
   position: absolute;
@@ -536,17 +534,11 @@ async function copyInviteCode() {
   color: var(--neutral-400);
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 6px;
-  transition: background 0.15s;
+  border-radius: var(--radius-xs);
+  transition: all var(--duration-fast);
 }
-.modal-close:hover {
-  background: var(--neutral-100);
-}
-.modal-emoji {
-  font-size: 48px;
-  line-height: 1;
-  margin-bottom: 12px;
-}
+.modal-close:hover { background: var(--neutral-100); color: var(--neutral-700); }
+.modal-emoji { font-size: 48px; line-height: 1; margin-bottom: 12px; }
 .modal-title {
   font-family: var(--font-display);
   font-size: 20px;
@@ -571,7 +563,7 @@ async function copyInviteCode() {
   padding: 8px 16px;
   background: var(--amber-50);
   border: 2px dashed var(--amber-500);
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-family: var(--font-mono);
   font-size: 18px;
   font-weight: 800;
@@ -583,16 +575,14 @@ async function copyInviteCode() {
   background: var(--amber-600);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: all var(--duration-fast);
 }
-.modal-copy-btn:hover {
-  background: #B45309;
-}
+.modal-copy-btn:hover { background: var(--amber-700); }
 .modal-hint {
   font-size: 12px;
   color: var(--neutral-400);
@@ -601,15 +591,17 @@ async function copyInviteCode() {
 .modal-link {
   display: inline-block;
   padding: 10px 28px;
-  background: var(--ink-900);
+  background: var(--grad-primary);
   color: #fff;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
-  transition: background 0.15s;
+  transition: all var(--duration-normal) var(--ease-out-soft);
+  box-shadow: 0 2px 8px rgba(27, 42, 74, 0.1);
 }
 .modal-link:hover {
-  background: var(--ink-800);
+  box-shadow: 0 4px 16px rgba(27, 42, 74, 0.16);
+  transform: translateY(-1px);
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="kg-container">
+  <div class="kg-container page-ambient">
     <!-- 顶栏 -->
     <div class="kg-topbar">
       <div class="kg-title">
@@ -282,7 +282,7 @@ function simulate() {
   const edgeSet = new Map()
   for (const e of edges) {
     const a = nodeMap[e.source], b = nodeMap[e.target]
-    if (!a || !a.x == null || !b || b.x == null) continue
+    if (!a || a.x == null || !b || b.x == null) continue
     const key = [e.source, e.target].sort().join('-')
     if (edgeSet.has(key)) continue
     edgeSet.set(key, true)
@@ -325,6 +325,7 @@ function initCanvas() {
 }
 
 function onResize() {
+  isMobile.value = window.innerWidth < 768
   if (!canvasWrap.value) return
   const rect = canvasWrap.value.getBoundingClientRect()
   W = rect.width; H = rect.height
@@ -734,10 +735,6 @@ function handleLayout() {
   initGraphLayout()
 }
 
-// ── 兼容 ──
-window.addEventListener('resize', () => {
-  isMobile.value = window.innerWidth < 768
-})
 </script>
 
 <style scoped>

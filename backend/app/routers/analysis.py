@@ -14,11 +14,11 @@ async def get_report(
     user: dict = Depends(get_current_user),
 ) -> dict:
     """获取学情分析报告"""
-    user = require_user(user) if user else {"user_id": 0}
+    user = require_user(user)
     return await analysis_service.get_report(
         session_id=session_id,
         force_refresh=force_refresh,
-        user_id=user.get("user_id", 0),
+        user_id=user["user_id"],
     )
 
 

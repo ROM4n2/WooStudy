@@ -1,5 +1,5 @@
 <template>
-  <div class="lab-view">
+  <div class="lab-view page-ambient fade-in-up">
     <div class="page-header">
       <h2>🔬 虚拟实验室</h2>
     </div>
@@ -35,7 +35,7 @@
     <div v-if="activeLab" class="sim-container">
       <div class="sim-header">
         <h3>{{ activeLab.name }}</h3>
-        <button class="btn-close" @click="activeLab = null">✕ 关闭</button>
+        <button class="btn-close" @click="handleCloseLab">✕ 关闭</button>
       </div>
       <iframe
         :src="activeLab.url"
@@ -70,8 +70,26 @@ onMounted(async () => {
 })
 
 function openLab(lab) {
+  recordCurrentSession()
   activeLab.value = lab
   sessionStartTime.value = Date.now()
+}
+
+async function recordCurrentSession() {
+  if (activeLab.value && sessionStartTime.value) {
+    const duration = Math.floor((Date.now() - sessionStartTime.value) / 1000)
+    const labId = activeLab.value.id
+    const labName = activeLab.value.name
+    sessionStartTime.value = null  // 防止重复记录
+    try {
+      await recordSession(labId, labName, duration)
+    } catch { /* 静默 */ }
+  }
+}
+
+function handleCloseLab() {
+  recordCurrentSession()
+  activeLab.value = null
 }
 
 function onSimLoad() {
@@ -79,10 +97,7 @@ function onSimLoad() {
 }
 
 onUnmounted(() => {
-  if (activeLab.value && sessionStartTime.value) {
-    const duration = Math.floor((Date.now() - sessionStartTime.value) / 1000)
-    recordSession(activeLab.value.id, activeLab.value.name, duration).catch(() => {})
-  }
+  recordCurrentSession()
 })
 </script>
 

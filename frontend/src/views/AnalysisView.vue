@@ -1,5 +1,5 @@
 <template>
-  <div class="analysis-view">
+  <div class="analysis-view page-ambient fade-in-up">
     <div class="page-header">
       <h2>📊 学情分析</h2>
       <div class="header-actions">

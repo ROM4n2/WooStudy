@@ -1,11 +1,12 @@
 /** 用户认证状态管理 */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { STORAGE_KEYS } from '../constants/keys'
 import router from '../router'
 import * as authApi from '../api/auth'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(localStorage.getItem('woostudy_token') || '')
+  const token = ref(localStorage.getItem(STORAGE_KEYS.TOKEN) || '')
   const user = ref(null)
   const loading = ref(false)
 
@@ -14,9 +15,9 @@ export const useAuthStore = defineStore('auth', () => {
   function setToken(newToken) {
     token.value = newToken
     if (newToken) {
-      localStorage.setItem('woostudy_token', newToken)
+      localStorage.setItem(STORAGE_KEYS.TOKEN, newToken)
     } else {
-      localStorage.removeItem('woostudy_token')
+      localStorage.removeItem(STORAGE_KEYS.TOKEN)
     }
   }
 
@@ -71,7 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     setToken('')
     user.value = null
-    localStorage.removeItem('woostudy_gate')
+    localStorage.removeItem(STORAGE_KEYS.GATE)
     router.push('/')
   }
 

@@ -53,8 +53,8 @@ async def delete_session(
     user: dict = Depends(get_current_user),
 ) -> dict:
     """删除会话及其所有消息"""
-    uid = user.get("user_id") if user else None
-    ok = await chat_service.delete_session(session_id, uid)
+    user = require_user(user)
+    ok = await chat_service.delete_session(session_id, user["user_id"])
     if not ok:
         raise HTTPException(status_code=404, detail="会话不存在")
     return JSONResponse({"ok": True})
@@ -80,11 +80,11 @@ async def send_message(
     user: dict = Depends(get_current_user),
 ) -> dict:
     """发送文字消息"""
-    user = require_user(user) if user else {"user_id": 0}
+    user = require_user(user)
     result = await chat_service.send_message(
         session_id=session_id,
         content=body.content,
-        user_id=user.get("user_id", 0),
+        user_id=user["user_id"],
         deep_mode=deep_mode,
         follow_up=follow_up,
     )
@@ -104,12 +104,12 @@ async def upload_image(
     if len(image_data) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="图片大小不能超过 5MB")
 
-    user = require_user(user) if user else {"user_id": 0}
+    user = require_user(user)
     result = await chat_service.send_message(
         session_id=session_id,
         content=content,
         image_data=image_data,
-        user_id=user.get("user_id", 0),
+        user_id=user["user_id"],
         deep_mode=deep_mode,
     )
     return JSONResponse(result)

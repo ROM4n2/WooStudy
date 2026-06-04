@@ -2,6 +2,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { STORAGE_KEYS } from '../constants/keys'
 import { getSessions, createSession, deleteSession } from '../api/chat'
 
 // 生成唯一 session_id
@@ -13,7 +14,7 @@ function generateSessionId() {
 // 管理 localStorage 中的 session_id 列表
 function loadSessionIds() {
   try {
-    const raw = localStorage.getItem('woostudy_session_ids')
+    const raw = localStorage.getItem(STORAGE_KEYS.SESSION_IDS)
     return raw ? JSON.parse(raw) : []
   } catch {
     return []
@@ -21,7 +22,7 @@ function loadSessionIds() {
 }
 
 function saveSessionIds(ids) {
-  localStorage.setItem('woostudy_session_ids', JSON.stringify(ids))
+  localStorage.setItem(STORAGE_KEYS.SESSION_IDS, JSON.stringify(ids))
 }
 
 // 迁移旧的单 session ID

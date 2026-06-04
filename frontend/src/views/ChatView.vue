@@ -72,7 +72,7 @@
           <div class="msg-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
           <div class="msg-content">
             <img v-if="msg.image_url" :src="msg.image_url" class="msg-image" alt="题目图片" />
-            <div class="msg-text" v-html="renderMarkdown(msg.content)"></div>
+            <div class="msg-text" v-html="renderKaTeX(msg.content)"></div>
             <div class="msg-meta">
               <span class="msg-time">{{ formatTime(msg.created_at) }}</span>
               <span v-if="msg.model_used" class="msg-model">{{ msg.model_used }}</span>
@@ -106,12 +106,11 @@
         </div>
 
         <div class="input-row">
-          <button class="tool-btn" @click="triggerUpload" title="上传图片（最多2张）">📷</button>
+          <button class="tool-btn" @click="triggerUpload" title="上传图片">📷</button>
           <input
             ref="fileInput"
             type="file"
             accept="image/jpeg,image/png,image/webp"
-            multiple
             hidden
             @change="handleFileSelect"
           />
@@ -145,13 +144,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useChatStore } from '../stores/chat'
 import { sendMessage, uploadImage, getHistory, optimizePrompt } from '../api/chat'
 import { compressImage } from '../utils/compress'
-import katex from 'katex'
-import 'katex/dist/katex.min.css'
+import { renderKaTeX } from '../utils/katex'
 
 const userStore = useUserStore()
 const chatStore = useChatStore()
@@ -168,12 +166,13 @@ const previewImages = ref([])
 const sidebarOpen = ref(false)
 const isMobile = ref(window.innerWidth < 768)
 
-window.addEventListener('resize', () => {
+function onWindowResize() {
   isMobile.value = window.innerWidth < 768
   if (!isMobile.value) sidebarOpen.value = true
-})
+}
 
 onMounted(async () => {
+  window.addEventListener('resize', onWindowResize)
   await userStore.loadSettings()
   await chatStore.loadSessions()
   userStore.sessionId = chatStore.currentId
@@ -181,6 +180,10 @@ onMounted(async () => {
   if (!isMobile.value) sidebarOpen.value = true
 
   await loadHistory()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', onWindowResize)
 })
 
 // 切换 session 时重新加载历史
@@ -230,17 +233,17 @@ async function handleDeleteSession(sessionId) {
 function triggerUpload() { fileInput.value?.click() }
 
 async function handleFileSelect(e) {
-  const files = Array.from(e.target.files)
-  const remaining = 2 - previewImages.value.length
-  for (const file of files.slice(0, remaining)) {
-    try {
-      const compressed = await compressImage(file)
-      previewImages.value.push({ file: compressed, url: URL.createObjectURL(compressed) })
-    } catch {
-      previewImages.value.push({ file, url: URL.createObjectURL(file) })
-    }
+  const file = e.target.files[0]
+  if (!file) return
+  // 替换已有预览（仅支持单张图片）
+  previewImages.value.forEach(img => URL.revokeObjectURL(img.url))
+  previewImages.value = []
+  try {
+    const compressed = await compressImage(file)
+    previewImages.value.push({ file: compressed, url: URL.createObjectURL(compressed) })
+  } catch {
+    previewImages.value.push({ file, url: URL.createObjectURL(file) })
   }
-  if (files.length > remaining) alert('一次最多上传 2 张图片')
   e.target.value = ''
 }
 
@@ -320,24 +323,6 @@ function scrollToBottom() {
   if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
 }
 
-function renderMarkdown(text) {
-  if (!text) return ''
-  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_, f) => {
-    try { return katex.renderToString(f.trim(), { displayMode: true, throwOnError: false }) }
-    catch { return `<div class="formula-error">$${f}$$</div>` }
-  })
-  html = html.replace(/\$([^$\n]+?)\$/g, (_, f) => {
-    try { return katex.renderToString(f.trim(), { displayMode: false, throwOnError: false }) }
-    catch { return `<span class="formula-error">$${f}$</span>` }
-  })
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\n/g, '<br />')
-  return html
-}
-
 function formatTime(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
@@ -355,7 +340,7 @@ function formatTime(dateStr) {
 </script>
 
 <style scoped>
-/* ── 布局：侧栏 + 主区域 ── */
+/* ══ 布局：侧栏 + 主区域 ══ */
 .chat-layout {
   display: flex;
   gap: 0;
@@ -363,18 +348,20 @@ function formatTime(dateStr) {
   position: relative;
 }
 
-/* ── 侧栏 ── */
+/* ══ 侧栏（玻璃质感） ══ */
 .chat-sidebar {
   width: 280px;
   min-width: 280px;
-  background: var(--surface);
+  background: var(--surface-glass);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   margin-right: 16px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: margin 0.25s ease, opacity 0.25s ease;
+  transition: all 0.3s var(--ease-out-soft);
+  box-shadow: var(--shadow-sm);
 }
 
 .sidebar-header {
@@ -396,35 +383,43 @@ function formatTime(dateStr) {
   color: var(--neutral-400);
   font-size: 14px;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   display: none;
+  transition: all var(--duration-fast) var(--ease-out-soft);
 }
 .close-sidebar-btn:hover {
   background: var(--neutral-200);
+  color: var(--neutral-700);
 }
 
 .new-chat-btn {
   margin: 8px 12px;
-  padding: 9px 0;
-  background: var(--ink-900);
+  padding: 10px 0;
+  background: var(--grad-primary);
   color: #fff;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  transition: background 0.15s;
+  gap: 6px;
+  transition: all var(--duration-normal) var(--ease-out-soft);
+  box-shadow: 0 2px 8px rgba(27, 42, 74, 0.12);
+  position: relative;
+  overflow: hidden;
 }
 .new-chat-btn:hover {
-  background: var(--ink-800);
+  box-shadow: 0 4px 16px rgba(27, 42, 74, 0.18);
+  transform: translateY(-1px);
 }
+.new-chat-btn:active { transform: translateY(0); }
 .new-chat-icon {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
+  line-height: 1;
 }
 
 .sidebar-list {
@@ -433,40 +428,34 @@ function formatTime(dateStr) {
   padding: 4px 0;
 }
 
-/* ── 日期分组 ── */
-.session-group {
-  margin-bottom: 4px;
-}
+/* ══ 日期分组 ══ */
+.session-group { margin-bottom: 4px; }
 .group-header {
   font-size: 11px;
   font-weight: 700;
   color: var(--neutral-500);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding: 10px 16px 4px;
+  padding: 12px 16px 5px;
 }
 
-/* ── 单个 Session ── */
+/* ══ 单个 Session ══ */
 .session-item {
   display: flex;
   align-items: center;
-  padding: 8px 16px;
+  padding: 9px 16px;
   cursor: pointer;
-  transition: background 0.12s;
+  transition: all var(--duration-fast) var(--ease-out-soft);
   border-left: 3px solid transparent;
   gap: 6px;
+  position: relative;
 }
-.session-item:hover {
-  background: var(--ink-50);
-}
+.session-item:hover { background: var(--ink-50); }
 .session-item.active {
-  background: var(--amber-50);
+  background: var(--grad-amber-glow);
   border-left-color: var(--amber-500);
 }
-.session-icon {
-  font-size: 12px;
-  flex-shrink: 0;
-}
+.session-icon { font-size: 12px; flex-shrink: 0; }
 .session-title {
   flex: 1;
   font-size: 13px;
@@ -483,33 +472,28 @@ function formatTime(dateStr) {
   cursor: pointer;
   color: var(--neutral-400);
   font-size: 12px;
-  padding: 2px 4px;
-  border-radius: 3px;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
-  transition: opacity 0.12s, color 0.12s;
+  transition: all var(--duration-fast) var(--ease-out-soft);
 }
-.session-item:hover .session-delete {
-  opacity: 1;
-}
+.session-item:hover .session-delete { opacity: 1; }
 .session-delete:hover {
   color: var(--rose-600);
   background: var(--rose-50);
 }
 
-.sidebar-empty,
-.sidebar-loading {
-  padding: 32px 16px;
+.sidebar-empty, .sidebar-loading {
+  padding: 40px 16px;
   text-align: center;
   font-size: 13px;
   color: var(--neutral-400);
 }
 
-/* ── 侧栏遮罩（移动端） ── */
-.sidebar-overlay {
-  display: none;
-}
+/* ══ 侧栏遮罩（移动端） ══ */
+.sidebar-overlay { display: none; }
 
-/* ── 主聊天区 ── */
+/* ══ 主聊天区 ══ */
 .chat-view {
   flex: 1;
   display: flex;
@@ -517,11 +501,11 @@ function formatTime(dateStr) {
   min-width: 0;
 }
 
-/* ── 头部 ── */
+/* ══ 头部 ══ */
 .chat-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 16px;
 }
 .sidebar-toggle {
@@ -533,7 +517,7 @@ function formatTime(dateStr) {
   font-size: 16px;
   line-height: 1;
   color: var(--neutral-500);
-  transition: all 0.15s;
+  transition: all var(--duration-fast) var(--ease-out-soft);
   flex-shrink: 0;
 }
 .sidebar-toggle:hover {
@@ -550,11 +534,7 @@ function formatTime(dateStr) {
   flex: 1;
 }
 
-.header-toggles {
-  display: flex;
-  gap: 8px;
-}
-
+.header-toggles { display: flex; gap: 8px; }
 .toggle {
   display: flex;
   align-items: center;
@@ -562,34 +542,32 @@ function formatTime(dateStr) {
   cursor: pointer;
   user-select: none;
   padding: 5px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   border: 1.5px solid var(--neutral-300);
-  transition: all 0.2s ease;
+  transition: all var(--duration-normal) var(--ease-out-soft);
   background: var(--surface);
 }
 .toggle:hover {
   border-color: var(--neutral-400);
+  background: var(--bg-elevated);
 }
 .toggle:has(input:checked) {
   border-color: var(--ink-700);
   background: var(--ink-50);
 }
-.toggle input {
-  cursor: pointer;
-  accent-color: var(--ink-700);
-}
+.toggle input { cursor: pointer; accent-color: var(--ink-700); }
 .toggle-label {
   font-size: 13px;
   color: var(--neutral-600);
   font-weight: 500;
-  transition: color 0.2s;
+  transition: color var(--duration-fast);
 }
 .toggle:has(input:checked) .toggle-label {
   color: var(--ink-900);
   font-weight: 600;
 }
 
-/* ── 对话区 ── */
+/* ══ 对话区 ══ */
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -599,17 +577,18 @@ function formatTime(dateStr) {
   border-radius: var(--radius-xl);
   margin-bottom: 14px;
   box-shadow: var(--shadow-sm);
+  scroll-behavior: smooth;
 }
 
 .message {
   display: flex;
   gap: 12px;
   margin-bottom: 22px;
-  animation: fadeIn 0.35s ease-out;
+  animation: msgIn 0.4s var(--ease-out-soft);
   position: relative;
 }
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -623,39 +602,37 @@ function formatTime(dateStr) {
   font-size: 16px;
   flex-shrink: 0;
   background: var(--bg-elevated);
+  box-shadow: var(--shadow-xs);
 }
 
-.user-msg {
-  flex-direction: row-reverse;
-}
-
-.user-msg .msg-avatar {
-  background: var(--ink-50);
-}
-
+/* ══ 用户消息气泡 ══ */
+.user-msg { flex-direction: row-reverse; }
+.user-msg .msg-avatar { background: var(--ink-50); }
 .user-msg .msg-content {
-  background: var(--ink-900);
-  color: #fff;
+  background: var(--grad-primary);
+  color: var(--text-on-primary);
   border-radius: 18px 6px 18px 18px;
+  box-shadow: 0 2px 12px rgba(27, 42, 74, 0.12);
 }
 
+/* ══ AI 消息气泡（琥珀色发光） ══ */
 .ai-msg .msg-avatar {
   background: var(--amber-50);
+  box-shadow: 0 0 0 2px var(--amber-100);
 }
-
 .ai-msg .msg-content {
-  background: #FCFBF8;
+  background: var(--surface);
   border: 1px solid var(--neutral-200);
   border-left: 4px solid var(--amber-500);
   border-radius: 6px 18px 18px 18px;
+  box-shadow: 0 2px 12px rgba(217, 119, 6, 0.06);
 }
 
 .msg-content {
   max-width: 78%;
-  padding: 12px 20px;
+  padding: 14px 20px;
   line-height: 1.75;
   font-size: 14px;
-  box-shadow: var(--shadow-sm);
 }
 
 .msg-image {
@@ -665,25 +642,23 @@ function formatTime(dateStr) {
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
-.msg-text :deep(.formula) {
-  overflow-x: auto;
-  padding: 4px 0;
-}
+.msg-text :deep(.formula) { overflow-x: auto; padding: 4px 0; }
 .msg-text :deep(pre) {
-  background: #F1F0EC;
-  padding: 12px 14px;
-  border-radius: 8px;
+  background: var(--neutral-100);
+  padding: 14px 16px;
+  border-radius: var(--radius);
   overflow-x: auto;
   font-size: 13px;
   line-height: 1.6;
-  margin: 8px 0;
+  margin: 10px 0;
+  border: 1px solid var(--border);
 }
 .msg-text :deep(code) {
   font-family: var(--font-mono);
   font-size: 13px;
-  background: #F1F0EC;
-  padding: 1px 5px;
-  border-radius: 3px;
+  background: var(--neutral-100);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
 }
 .msg-meta {
   font-size: 11px;
@@ -696,74 +671,76 @@ function formatTime(dateStr) {
   align-items: center;
   gap: 8px;
 }
-.msg-time {
-  white-space: nowrap;
-}
+.msg-time { white-space: nowrap; }
 .msg-model {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 10px;
+  opacity: 0.7;
 }
-
 .user-msg .msg-meta {
-  color: rgba(255, 255, 255, 0.5);
-  border-top-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.45);
+  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
-/* ── Combo 连击标记 ── */
+/* ══ Combo 连击标记 ══ */
 .combo-tag {
   position: absolute;
   top: -12px;
   right: -8px;
-  background: linear-gradient(135deg, var(--amber-500), var(--rose-600));
+  background: var(--grad-accent);
   color: #fff;
   font-size: 13px;
   font-weight: 800;
   padding: 2px 12px;
   border-radius: 20px;
-  box-shadow: 0 2px 10px rgba(217, 119, 6, 0.35);
-  animation: comboPop 1.5s ease-out forwards;
+  box-shadow: 0 2px 14px rgba(217, 119, 6, 0.4);
+  animation: comboPop 1.5s var(--ease-out-soft) forwards;
   pointer-events: none;
 }
 @keyframes comboPop {
   0% { transform: scale(0.5) translateY(10px); opacity: 0; }
-  20% { transform: scale(1.2) translateY(-4px); opacity: 1; }
+  20% { transform: scale(1.15) translateY(-4px); opacity: 1; }
   40% { transform: scale(1) translateY(0); opacity: 1; }
   70% { opacity: 1; }
   100% { transform: translateY(-20px); opacity: 0; }
 }
 
-/* ── 打字动画 ── */
+/* ══ 打字动画 ══ */
 .typing-indicator {
   display: flex;
   gap: 5px;
-  padding: 6px 0;
+  padding: 8px 0;
+  align-items: center;
 }
 .typing-indicator span {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--amber-500);
-  animation: bounce 1.4s infinite ease-in-out;
+  animation: msgBounce 1.4s ease-in-out infinite;
 }
-.typing-indicator span:nth-child(2) { animation-delay: 0.16s; }
-.typing-indicator span:nth-child(3) { animation-delay: 0.32s; }
-@keyframes bounce {
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes msgBounce {
   0%, 60%, 100% { transform: translateY(0); }
   30% { transform: translateY(-10px); }
 }
 
-/* ── 输入区 ── */
+/* ══ 输入区域（玻璃质感） ══ */
 .input-area {
-  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  padding: 14px 16px;
-  background: var(--surface);
+  border: 1.5px solid var(--border);
+  background: var(--surface-glass);
+  backdrop-filter: blur(8px);
+  padding: 12px 16px;
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s;
+  transition: all var(--duration-normal) var(--ease-out-soft);
 }
 .input-area:focus-within {
-  box-shadow: 0 0 0 3px rgba(43, 74, 122, 0.06), var(--shadow-md);
+  border-color: var(--ink-300);
+  box-shadow: 0 0 0 3px rgba(27, 42, 74, 0.05), var(--shadow-sm);
 }
 
 .image-previews {
@@ -774,17 +751,14 @@ function formatTime(dateStr) {
 }
 .preview-item {
   position: relative;
-  width: 90px;
-  height: 90px;
-  border-radius: var(--radius-sm);
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  border: 1.5px solid var(--neutral-200);
+  animation: scaleIn 0.25s var(--ease-spring);
 }
-.preview-item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+.preview-item img { width: 100%; height: 100%; object-fit: cover; }
 .remove-img {
   position: absolute;
   top: -6px;
@@ -793,7 +767,7 @@ function formatTime(dateStr) {
   height: 22px;
   border-radius: 50%;
   border: none;
-  background: var(--neutral-600);
+  background: rgba(0,0,0,0.45);
   color: #fff;
   cursor: pointer;
   font-size: 11px;
@@ -801,10 +775,12 @@ function formatTime(dateStr) {
   align-items: center;
   justify-content: center;
   opacity: 0.85;
-  transition: opacity 0.15s;
+  transition: all var(--duration-fast);
+  backdrop-filter: blur(4px);
 }
 .remove-img:hover {
   opacity: 1;
+  background: rgba(225, 29, 72, 0.7);
 }
 
 .input-row {
@@ -816,12 +792,12 @@ function formatTime(dateStr) {
 .tool-btn {
   background: none;
   border: 1.5px solid var(--neutral-300);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 8px 10px;
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
-  transition: all 0.15s ease;
+  transition: all var(--duration-fast) var(--ease-out-soft);
   flex-shrink: 0;
   color: var(--neutral-500);
 }
@@ -829,18 +805,11 @@ function formatTime(dateStr) {
   border-color: var(--ink-700);
   background: var(--ink-50);
   color: var(--ink-700);
+  transform: translateY(-1px);
 }
-.tool-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.optimize-btn {
-  font-size: 16px;
-}
-.optimizing-spinner {
-  animation: spin 0.8s linear infinite;
-}
+.tool-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.optimize-btn { font-size: 16px; }
+.optimizing-spinner { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 textarea {
@@ -855,61 +824,56 @@ textarea {
   color: var(--text-primary);
   background: transparent;
 }
-textarea::placeholder {
-  color: var(--neutral-400);
-}
+textarea::placeholder { color: var(--neutral-400); }
 
 .send-btn {
   padding: 8px 24px;
-  background: var(--ink-900);
+  background: var(--grad-primary);
   color: #fff;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: all var(--duration-normal) var(--ease-out-soft);
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(27, 42, 74, 0.1);
 }
 .send-btn:hover:not(:disabled) {
-  background: var(--ink-800);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 4px 16px rgba(27, 42, 74, 0.16);
+  transform: translateY(-1px);
 }
-.send-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
+.send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* ── 响应式（移动端） ── */
+/* ══ 移动端适配 ══ */
 @media (max-width: 767px) {
+  .chat-layout { height: calc(100vh - 96px); }
   .chat-sidebar {
     position: fixed;
-    top: 64px;
+    top: 56px;
     left: 0;
     bottom: 0;
     z-index: 50;
     width: 300px;
-    margin-right: 0;
-    border-radius: 0;
-    border: none;
-    border-right: 1px solid var(--border);
-    box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+    border-radius: 0 var(--radius-lg) 0 0;
+    border-left: none;
+    border-bottom: none;
     transform: translateX(-100%);
-    transition: transform 0.25s ease;
+    transition: transform 0.3s var(--ease-out-soft);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.1);
   }
-  .chat-sidebar.open {
-    transform: translateX(0);
-  }
-  .close-sidebar-btn {
-    display: block;
-  }
+  .chat-sidebar.open { transform: translateX(0); }
+  .close-sidebar-btn { display: block; }
   .sidebar-overlay {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.3);
     z-index: 49;
+    background: rgba(0,0,0,0.3);
   }
+  .messages { padding: 14px; }
+  .msg-content { max-width: 88%; }
+  .chat-header h2 { font-size: 18px; }
 }
 </style>

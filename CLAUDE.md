@@ -87,9 +87,13 @@ dispatch_chat(content, image_base64, deep_mode, mimo_key, deepseek_key)
   - 掌握度算法增强：错题库 + 用户标记 + 学情摘要加权
   - 角色权限 admin/contributor/user
 
-## 待做
-- [ ] 讨论区 + 资源共享
-- [ ] 迁移阿里云（华北2 北京 + ICP 备案）
-  - 架构：Nginx 反代前端静态文件 + FastAPI 后端 + SQLite
-  - 域名：.xyz，首年 8 元
-  - 用户先抢 38 元/年轻量服务器，抢不到就 99 元/年 ECS
+## 待做（按推荐顺序）
+- [ ] 迁移阿里云（Railway + Vercel → 阿里云国内服务器）
+  - 架构：Nginx 反代前端静态文件 + FastAPI 后端 + SQLite，单机无 Docker
+  - 预算：~107 元/年（ECS t6 38~99 元 + 域名 .xyz 8 元）
+  - 代码零改动：全由环境变量 /opt/woostudy/.env 驱动
+  - 耗时大头：ICP 备案 10-20 个工作日
+  - 期间可用 IP 测试，Vercel+Railway 保持并行
+  - 详细方案见 `C:\Users\席皓宇\.claude\projects\D--Code\memory\aliyun_migration.md`
+- [ ] 讨论区 + 资源共享（依赖阿里云稳定部署）
+- [ ] 知识点上传接口 ✅（已实现为管理员 CRUD，待完善为贡献者流程）

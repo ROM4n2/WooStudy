@@ -1,5 +1,5 @@
 <template>
-  <div class="errorbook-view">
+  <div class="errorbook-view page-ambient fade-in-up">
     <div class="page-header">
       <h2>📝 错题本</h2>
       <div class="filters">
@@ -93,26 +93,10 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { getErrorLogs, markReviewed, generateVariant } from '../api/errorbook'
-import katex from 'katex'
-import 'katex/dist/katex.min.css'
+import { renderKaTeX } from '../utils/katex'
+import { SUBJECTS } from '../constants/subjects'
 
-function renderKaTeX(text) {
-  if (!text) return ''
-  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_, f) => {
-    try { return katex.renderToString(f.trim(), { displayMode: true, throwOnError: false }) }
-    catch { return `<div class="formula-error">$${f}$$</div>` }
-  })
-  html = html.replace(/\$([^$\n]+?)\$/g, (_, f) => {
-    try { return katex.renderToString(f.trim(), { displayMode: false, throwOnError: false }) }
-    catch { return `<span class="formula-error">$${f}$</span>` }
-  })
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\n/g, '<br />')
-  return html
-}
-
-const subjects = ['力学', '电学', '热学', '光学', '近代物理']
+const subjects = SUBJECTS
 const errors = ref([])
 const loading = ref(true)
 const filterSubject = ref('')

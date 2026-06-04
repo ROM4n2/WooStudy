@@ -3,7 +3,7 @@
 import json
 from typing import Optional
 
-from app.db.database import get_db
+from app.db.database import get_db, db_execute, db_fetch_all, db_fetch_one
 from app.ai.dispatcher import dispatch_generate_variant
 from app.services import get_user_api_keys
 
@@ -47,9 +47,7 @@ async def get_error_logs(
         ORDER BY e.created_at DESC
     """
 
-    cursor = await db.execute(query, params)
-    rows = await cursor.fetchall()
-    await cursor.close()
+    rows = await db_fetch_all(query, params)
 
     items = []
     for row in rows:
@@ -70,7 +68,7 @@ async def get_error_logs(
 async def mark_reviewed(error_log_id: int, reviewed: bool = True) -> dict:
     """标记错题为已复习/未复习"""
     db = await get_db()
-    await db.execute(
+    await db_execute(
         "UPDATE error_logs SET reviewed = ? WHERE id = ?",
         (1 if reviewed else 0, error_log_id),
     )
@@ -86,10 +84,8 @@ async def generate_variant(error_log_id: int, session_id: str, user_id: int = 0)
     2. 调用 AI 生成变式
     3. 保存变式记录
     """
-    db = await get_db()
-
     # 1. 获取错题
-    cursor = await db.execute(
+    row = await db_fetch_one(
         """SELECT e.id, e.user_answer, e.wrong_reason, e.question_id,
                   q.content, q.correct_answer, q.options_json, q.explanation
            FROM error_logs e
@@ -97,8 +93,6 @@ async def generate_variant(error_log_id: int, session_id: str, user_id: int = 0)
            WHERE e.id = ?""",
         (error_log_id,),
     )
-    row = await cursor.fetchone()
-    await cursor.close()
 
     if row is None:
         raise ValueError(f"错题记录不存在: {error_log_id}")
@@ -117,6 +111,7 @@ async def generate_variant(error_log_id: int, session_id: str, user_id: int = 0)
     variant_data = _parse_variant_json(ai_result["content"])
 
     # 3. 保存变式
+    db = await get_db()
     insert_cursor = await db.execute(
         """INSERT INTO variant_questions
            (error_log_id, content, options_json, correct_answer, generated_by)
@@ -129,11 +124,11 @@ async def generate_variant(error_log_id: int, session_id: str, user_id: int = 0)
             ai_result.get("model", "deepseek"),
         ),
     )
+    new_id = insert_cursor.lastrowid
     await db.commit()
+    await insert_cursor.close()
 
     # 4. 返回
-    new_id = insert_cursor.lastrowid
-    await insert_cursor.close()
     return {
         "error_log_id": error_log_id,
         "variant": {
@@ -148,13 +143,11 @@ async def generate_variant(error_log_id: int, session_id: str, user_id: int = 0)
 
 async def _get_variants(db, error_log_id: int) -> list[dict]:
     """获取错题关联的变式记录"""
-    cursor = await db.execute(
+    rows = await db_fetch_all(
         "SELECT id, content, options_json, correct_answer, user_answer, is_correct, created_at "
         "FROM variant_questions WHERE error_log_id = ? ORDER BY id",
         (error_log_id,),
     )
-    rows = await cursor.fetchall()
-    await cursor.close()
     return [
         {
             "id": r["id"],

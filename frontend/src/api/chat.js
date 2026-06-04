@@ -1,11 +1,12 @@
 import request from './request'
+import { STORAGE_KEYS } from '../constants/keys'
 import { useUserStore } from '../stores/user'
 
 // ── Session 管理 ──
 
 export function getSessions() {
   // 匿名用户：从 localStorage 取所有已知 session_id
-  const ids = localStorage.getItem('woostudy_session_ids')
+  const ids = localStorage.getItem(STORAGE_KEYS.SESSION_IDS)
   const params = ids ? { session_ids: ids } : {}
   return request.get('/chat/sessions', { params })
 }

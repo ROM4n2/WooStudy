@@ -1,6 +1,6 @@
 """智能刷题服务——题目获取 + 答案提交 + 错题入库"""
 
-from app.db.database import get_db
+from app.db.database import get_db, db_execute, db_fetch_all, db_fetch_one
 
 
 async def get_practice_questions(
@@ -18,25 +18,21 @@ async def get_practice_questions(
     3. 随机排序，提升多样性
     4. 如果指定了 subject 和 difficulty，按条件筛选
     """
-    db = await get_db()
-
     # 获取用户已做过的题目 ID
-    cursor = await db.execute(
+    done_rows = await db_fetch_all(
         "SELECT DISTINCT question_id FROM error_logs WHERE session_id = ?",
         (session_id,),
     )
-    done_ids = [row["question_id"] for row in await cursor.fetchall()]
-    await cursor.close()
+    done_ids = [row["question_id"] for row in done_rows]
 
     # 获取用户薄弱科目（错题最多的科目）
-    cursor = await db.execute(
+    weak_rows = await db_fetch_all(
         """SELECT subject FROM error_logs
            WHERE session_id = ? AND is_correct = 0
            GROUP BY subject ORDER BY COUNT(*) DESC LIMIT 3""",
         (session_id,),
     )
-    weak_subjects = [row["subject"] for row in await cursor.fetchall()]
-    await cursor.close()
+    weak_subjects = [row["subject"] for row in weak_rows]
 
     # 构建查询
     query = "SELECT id, content, question_type, options_json, subject, difficulty, correct_answer, explanation FROM questions"
@@ -72,9 +68,7 @@ async def get_practice_questions(
     query += " LIMIT ?"
     params.append(count)
 
-    cursor = await db.execute(query, params)
-    rows = await cursor.fetchall()
-    await cursor.close()
+    rows = await db_fetch_all(query, params)
 
     import json
     questions = [
@@ -104,23 +98,17 @@ async def submit_answer(
     """
     提交答案：判断对错 → 记录到错题本 → 返回结果
     """
-    db = await get_db()
-
     # 确保 session 存在（满足外键约束）
-    cursor = await db.execute("SELECT id FROM sessions WHERE session_id = ?", (session_id,))
-    row_s = await cursor.fetchone()
-    await cursor.close()
+    row_s = await db_fetch_one("SELECT id FROM sessions WHERE session_id = ?", (session_id,))
     if row_s is None:
-        await db.execute("INSERT INTO sessions (session_id) VALUES (?)", (session_id,))
+        await db_execute("INSERT INTO sessions (session_id) VALUES (?)", (session_id,))
         await db.commit()
 
     # 获取正确答案
-    cursor = await db.execute(
+    row = await db_fetch_one(
         "SELECT correct_answer, explanation, subject FROM questions WHERE id = ?",
         (question_id,),
     )
-    row = await cursor.fetchone()
-    await cursor.close()
 
     if row is None:
         raise ValueError(f"题目不存在: {question_id}")
@@ -131,16 +119,15 @@ async def submit_answer(
     error_log_id = None
 
     if not is_correct:  # 只记录错题到错题本
-        await db.execute(
+        await db_execute(
             """INSERT INTO error_logs (session_id, question_id, user_answer, is_correct, subject)
                VALUES (?, ?, ?, ?, ?)""",
             (session_id, question_id, answer, 0, row["subject"]),
         )
         await db.commit()
 
-        cursor = await db.execute("SELECT last_insert_rowid()")
-        error_log_id = (await cursor.fetchone())[0]
-        await cursor.close()
+        result = await db_fetch_one("SELECT last_insert_rowid()")
+        error_log_id = result[0] if result else None
 
     return {
         "question_id": question_id,

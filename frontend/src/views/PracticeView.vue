@@ -122,10 +122,10 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { getQuestions, submitAnswer } from '../api/practice'
-import katex from 'katex'
-import 'katex/dist/katex.min.css'
+import { renderKaTeX } from '../utils/katex'
+import { SUBJECTS } from '../constants/subjects'
 
-const subjects = ['力学', '电学', '热学', '光学', '近代物理']
+const subjects = SUBJECTS
 const questions = ref([])
 const answers = reactive({})
 const loading = ref(false)
@@ -143,22 +143,6 @@ const progressPercent = computed(() => {
   if (questions.value.length === 0) return 0
   return (answeredCount.value / questions.value.length) * 100
 })
-
-function renderKaTeX(text) {
-  if (!text) return ''
-  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  html = html.replace(/\$\$([\s\S]*?)\$\$/g, (_, f) => {
-    try { return katex.renderToString(f.trim(), { displayMode: true, throwOnError: false }) }
-    catch { return `<div class="formula-error">$${f}$$</div>` }
-  })
-  html = html.replace(/\$([^$\n]+?)\$/g, (_, f) => {
-    try { return katex.renderToString(f.trim(), { displayMode: false, throwOnError: false }) }
-    catch { return `<span class="formula-error">$${f}$</span>` }
-  })
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\n/g, '<br />')
-  return html
-}
 
 async function loadQuestions() {
   loading.value = true
@@ -195,42 +179,32 @@ async function handleSubmitAnswer(q) {
 </script>
 
 <style scoped>
+/* ══ 控制区 ══ */
 .controls {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
-.controls select {
-  padding: 7px 14px;
-  border: 1.5px solid var(--neutral-300);
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  background: var(--surface);
-  color: var(--text-primary);
-  cursor: pointer;
-  outline: none;
-}
-.controls select:focus {
-  border-color: var(--ink-700);
-}
 
-/* 薄弱科目 */
+/* ══ 薄弱科目 Banner ══ */
 .weak-banner {
-  background: var(--amber-50);
-  border: 1px solid var(--amber-400);
+  background: linear-gradient(135deg, var(--amber-50) 0%, var(--bg-elevated) 100%);
+  border: 1px solid var(--amber-200);
   border-left: 4px solid var(--amber-600);
   border-radius: var(--radius);
-  padding: 10px 16px;
+  padding: 12px 18px;
   font-size: 13px;
   color: #92400E;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   line-height: 1.6;
+  animation: slideUp 0.35s var(--ease-out-soft);
 }
 
-/* 进度条 */
+/* ══ 进度条（动态渐变） ══ */
 .progress-bar-wrapper {
   margin-bottom: 20px;
+  animation: fadeInDown 0.3s var(--ease-out-soft);
 }
 .progress-info {
   display: flex;
@@ -247,12 +221,24 @@ async function handleSubmitAnswer(q) {
 }
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--ink-700), var(--ink-500));
+  background: linear-gradient(90deg, var(--teal-600), var(--teal-400));
   border-radius: 3px;
-  transition: width 0.4s ease;
+  transition: width 0.5s var(--ease-out-soft);
+  position: relative;
+}
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: shimmerProgress 2s ease-in-out infinite;
+}
+@keyframes shimmerProgress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
-/* 题目卡片 */
+/* ══ 题目卡片 ══ */
 .question-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -261,10 +247,12 @@ async function handleSubmitAnswer(q) {
   padding: 22px;
   margin-bottom: 18px;
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s;
+  transition: all var(--duration-normal) var(--ease-out-soft);
+  animation: fadeInUp 0.35s var(--ease-out-soft);
 }
 .question-card:hover {
   box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
 .q-header {
@@ -283,7 +271,7 @@ async function handleSubmitAnswer(q) {
   background: var(--ink-50);
   color: var(--ink-700);
   padding: 2px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-full);
   font-size: 12px;
   font-weight: 600;
 }
@@ -291,22 +279,15 @@ async function handleSubmitAnswer(q) {
   font-size: 13px;
   color: var(--neutral-500);
 }
-
 .q-result-tag {
   font-size: 12px;
   font-weight: 600;
   padding: 2px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-full);
   margin-left: auto;
 }
-.q-result-tag.correct {
-  background: var(--teal-50);
-  color: var(--teal-600);
-}
-.q-result-tag.wrong {
-  background: var(--rose-50);
-  color: var(--rose-600);
-}
+.q-result-tag.correct { background: var(--teal-50); color: var(--teal-600); }
+.q-result-tag.wrong { background: var(--rose-50); color: var(--rose-600); }
 
 .q-content {
   line-height: 1.9;
@@ -316,7 +297,7 @@ async function handleSubmitAnswer(q) {
 }
 .q-content :deep(.formula) { overflow-x: auto; padding: 4px 0; }
 
-/* 选项 */
+/* ══ 选项（增强 hover 微交互） ══ */
 .q-options {
   display: flex;
   flex-direction: column;
@@ -324,21 +305,24 @@ async function handleSubmitAnswer(q) {
   margin-bottom: 16px;
 }
 .option {
-  padding: 11px 18px;
+  padding: 12px 18px;
   border: 2px solid var(--neutral-200);
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.2s ease;
+  transition: all var(--duration-normal) var(--ease-out-soft);
   background: var(--bg-elevated);
+  position: relative;
 }
 .option:hover:not(.disabled) {
   border-color: var(--ink-500);
   background: var(--ink-50);
+  transform: translateX(3px);
 }
 .option.selected {
   border-color: var(--ink-700);
   background: var(--ink-50);
+  box-shadow: 0 0 0 3px rgba(27, 42, 74, 0.06);
 }
 .option.correct {
   border-color: var(--teal-600);
@@ -350,119 +334,70 @@ async function handleSubmitAnswer(q) {
   background: var(--rose-50);
   cursor: default;
 }
-.option.disabled {
-  cursor: default;
-  opacity: 0.7;
-}
+.option.disabled { cursor: default; opacity: 0.7; }
 
-.q-fill {
-  margin-bottom: 16px;
-}
+.q-fill { margin-bottom: 16px; }
 .q-fill input {
   width: 100%;
-  padding: 10px 16px;
+  padding: 11px 16px;
   border: 2px solid var(--neutral-200);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   font-size: 14px;
   box-sizing: border-box;
   background: var(--bg-elevated);
   outline: none;
-  transition: border-color 0.15s;
+  transition: all var(--duration-normal) var(--ease-out-soft);
 }
 .q-fill input:focus {
   border-color: var(--ink-700);
+  box-shadow: 0 0 0 3px rgba(27, 42, 74, 0.06);
 }
+.q-actions { margin-bottom: 8px; }
 
-.q-actions {
-  margin-bottom: 8px;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 22px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.btn-primary {
-  background: var(--ink-900);
-  color: #fff;
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--ink-800);
-}
-
-.btn-accent {
-  background: var(--amber-600);
-  color: #fff;
-}
-.btn-accent:hover:not(:disabled) {
-  background: #B45309;
-}
-
-.btn-outline {
-  background: transparent;
-  border: 1.5px solid var(--neutral-300);
-  color: var(--neutral-700);
-}
-.btn-outline:hover:not(:disabled) {
-  border-color: var(--ink-700);
-  color: var(--ink-700);
-  background: var(--ink-50);
-}
-
-/* 结果 */
+/* ══ 结果区块 ══ */
 .result-block {
   margin-top: 14px;
+  animation: fadeIn 0.3s var(--ease-out-soft);
 }
 .result-banner {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   font-size: 14px;
+  font-weight: 600;
 }
-.result-banner.correct {
-  background: var(--teal-50);
-  color: var(--teal-600);
-}
-.result-banner.wrong {
-  background: var(--rose-50);
-  color: var(--rose-600);
-}
+.result-banner.correct { background: var(--teal-50); color: var(--teal-600); }
+.result-banner.wrong { background: var(--rose-50); color: var(--rose-600); }
 .result-icon { font-size: 20px; }
 
 .explanation {
   margin-top: 10px;
-  padding: 14px;
+  padding: 16px;
   background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   line-height: 1.8;
   font-size: 14px;
   color: var(--text-secondary);
+  border: 1px solid var(--border);
 }
 .errorbook-hint {
   margin-top: 8px;
   font-size: 13px;
+  font-weight: 600;
   color: var(--amber-600);
 }
 
-/* 底部 */
+/* ══ 底部 ══ */
 .bottom-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 18px 0;
   gap: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
 }
 .session-summary {
   font-size: 14px;
@@ -472,5 +407,6 @@ async function handleSubmitAnswer(q) {
   margin-left: 10px;
   font-size: 13px;
   color: var(--teal-600);
+  font-weight: 600;
 }
 </style>

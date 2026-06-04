@@ -140,6 +140,55 @@ async def create_edge(body: CreateEdgeRequest, admin: dict = Depends(_require_ad
     return JSONResponse(result)
 
 
+# ── 用户贡献 ──
+
+
+class ContributionRequest(BaseModel):
+    label: str
+    subject: str
+    category: str = "topic"
+    parent_id: Optional[str] = None
+    description: str = ""
+    importance: int = 3
+
+
+@router.post("/contributions")
+async def submit_contribution(body: ContributionRequest, user: dict = Depends(get_current_user)):
+    """提交知识点贡献（需登录，自动 pending）"""
+    u = require_user(user)
+    if body.subject not in ("力学", "电学", "热学", "光学", "近代物理"):
+        raise HTTPException(400, "科目必须是：力学/电学/热学/光学/近代物理")
+    if body.category not in ("chapter", "section", "topic"):
+        raise HTTPException(400, "category 必须是 chapter/section/topic")
+    result = await knowledge_service.submit_contribution(u["user_id"], body.model_dump())
+    return JSONResponse(result)
+
+
+@router.get("/pending")
+async def list_pending(admin: dict = Depends(_require_admin)):
+    """管理员：查看待审核贡献"""
+    items = await knowledge_service.get_pending_contributions()
+    return JSONResponse({"items": items})
+
+
+@router.put("/pending/{node_id}/approve")
+async def approve_contribution(node_id: str, admin: dict = Depends(_require_admin)):
+    """管理员：批准知识点"""
+    ok = await knowledge_service.approve_contribution(node_id)
+    if not ok:
+        raise HTTPException(404, "待审核节点不存在或已被处理")
+    return JSONResponse({"ok": True})
+
+
+@router.put("/pending/{node_id}/reject")
+async def reject_contribution(node_id: str, admin: dict = Depends(_require_admin)):
+    """管理员：拒绝知识点"""
+    ok = await knowledge_service.reject_contribution(node_id)
+    if not ok:
+        raise HTTPException(404, "待审核节点不存在或已被处理")
+    return JSONResponse({"ok": True})
+
+
 @router.delete("/edges")
 async def delete_edge(
     source_id: str,
