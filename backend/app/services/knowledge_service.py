@@ -1,56 +1,73 @@
-"""知识图谱服务——知识点结构 + 个性化薄弱数据融合"""
+"""知识图谱服务——DB 持久化存储 + CRUD + 用户标记 + 学情融合"""
 
 import json
-from pathlib import Path
 from typing import Optional
 
 from app.db.database import get_db
 
 
-def _load_seed_graph() -> dict:
-    """从 seed_data/knowledge_graph.json 加载基础图谱"""
-    path = Path(__file__).parent.parent.parent / "seed_data" / "knowledge_graph.json"
-    if not path.exists():
-        return {"nodes": [], "edges": []}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+# ── 读取图谱 ──
 
 
 async def get_knowledge_graph(user_id: Optional[int] = None) -> dict:
-    """获取知识图谱，可选融合用户薄弱点数据"""
-    graph = _load_seed_graph()
-    if not graph.get("nodes"):
-        return graph
+    """从 DB 获取完整知识图谱，融合用户标记和掌握度"""
+    db = await get_db()
 
-    # 从 parent 字段生成包含边
-    node_ids = {n["id"] for n in graph["nodes"]}
-    existing_edges = {(e["source"], e["target"]) for e in graph.get("edges", [])}
-    for node in graph["nodes"]:
-        parent = node.get("parent")
-        if parent and parent in node_ids and (parent, node["id"]) not in existing_edges:
-            graph["edges"].append({
-                "source": parent,
-                "target": node["id"],
-                "type": "contains",
-                "label": "包含",
-            })
+    cursor = await db.execute(
+        "SELECT id, label, category, subject, parent_id, description, importance, source "
+        "FROM knowledge_nodes ORDER BY subject, category"
+    )
+    nodes = [dict(row) for row in await cursor.fetchall()]
+    await cursor.close()
+    # 统一字段名
+    for n in nodes:
+        n["parent"] = n.pop("parent_id")
 
-    # 融合用户的薄弱知识点（从 error_logs + analysis 分析）
+    cursor2 = await db.execute(
+        "SELECT source_id, target_id, type, label FROM knowledge_edges"
+    )
+    edges = [dict(row) for row in await cursor2.fetchall()]
+    await cursor2.close()
+    # 统一字段名
+    for e in edges:
+        e["source"] = e.pop("source_id")
+        e["target"] = e.pop("target_id")
+
+    if not nodes:
+        return {"nodes": [], "edges": []}
+
+    # 融合用户掌握度
     if user_id:
         mastery = await _calc_user_mastery(user_id)
-        for node in graph["nodes"]:
-            node["mastery"] = mastery.get(node["id"], None)
+        markers = await _get_user_markers(user_id)
+        marker_map = {}
+        for m in markers:
+            nid = m["node_id"]
+            if nid not in marker_map:
+                marker_map[nid] = []
+            marker_map[nid].append(m["marker_type"])
 
-    return graph
+        for n in nodes:
+            n["mastery"] = mastery.get(n["id"], None)
+            n["markers"] = marker_map.get(n["id"], [])
+
+    return {"nodes": nodes, "edges": edges}
+
+
+# ── 掌握度计算（含学情 + 标记加权） ──
 
 
 async def _calc_user_mastery(user_id: int) -> dict:
-    """计算用户对各知识点的掌握度 (0~1)"""
+    """计算用户对各知识点的掌握度 (0~1)，结合学习记录和标记"""
     db = await get_db()
     mastery = {}
 
-    # 从 error_logs 统计：从题目关联知识点
-    # 先用 learning_summaries 中的 subject 标签
+    subject_nodes = {
+        "力学": "mechanics", "电学": "electromagnetism",
+        "热学": "thermodynamics", "光学": "optics", "近代物理": "modern_physics",
+    }
+
+    # 1. 学习摘要中的学科 → 对应章节点
     cursor = await db.execute(
         "SELECT subjects_json FROM learning_summaries "
         "WHERE session_id IN (SELECT session_id FROM sessions WHERE user_id = ?) "
@@ -59,17 +76,171 @@ async def _calc_user_mastery(user_id: int) -> dict:
     )
     rows = await cursor.fetchall()
     await cursor.close()
-
-    # 简单映射：学科名称 → 章节点
-    subject_nodes = {
-        "力学": "mechanics", "电学": "electromagnetism",
-        "热学": "thermodynamics", "光学": "optics", "近代物理": "modern_physics",
-    }
     for row in rows:
         subjects = json.loads(row["subjects_json"]) if row["subjects_json"] else []
         for subj in subjects:
-            node_id = subject_nodes.get(subj)
-            if node_id:
-                mastery[node_id] = 0.5  # 标记为有过学习记录
+            nid = subject_nodes.get(subj)
+            if nid:
+                mastery[nid] = max(mastery.get(nid, 0), 0.5)
+
+    # 2. 错题本 → 低掌握度
+    cursor2 = await db.execute(
+        "SELECT subject, COUNT(*) as cnt FROM error_logs "
+        "WHERE session_id IN (SELECT session_id FROM sessions WHERE user_id = ?) "
+        "AND is_correct = 0 GROUP BY subject",
+        (user_id,),
+    )
+    rows2 = await cursor2.fetchall()
+    await cursor2.close()
+    for row in rows2:
+        nid = subject_nodes.get(row["subject"])
+        if nid:
+            # 错题越多掌握度越低
+            base = mastery.get(nid, 0.5)
+            mastery[nid] = max(0.1, base - row["cnt"] * 0.05)
+
+    # 3. 用户标记影响
+    cursor3 = await db.execute(
+        "SELECT node_id, marker_type FROM knowledge_markers WHERE user_id = ?",
+        (user_id,),
+    )
+    rows3 = await cursor3.fetchall()
+    await cursor3.close()
+    for row in rows3:
+        nid = row["node_id"]
+        mt = row["marker_type"]
+        if mt == "weak":
+            mastery[nid] = min(mastery.get(nid, 0.5), 0.3)
+        elif mt == "important":
+            mastery[nid] = max(mastery.get(nid, 0.5), 0.6)
 
     return mastery
+
+
+# ── 用户标记 ──
+
+
+async def _get_user_markers(user_id: int) -> list:
+    """获取用户所有标记"""
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT node_id, marker_type FROM knowledge_markers WHERE user_id = ?",
+        (user_id,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [dict(r) for r in rows]
+
+
+async def add_marker(user_id: int, node_id: str, marker_type: str, note: str = "") -> dict:
+    """添加标记"""
+    db = await get_db()
+    await db.execute(
+        "INSERT OR REPLACE INTO knowledge_markers (user_id, node_id, marker_type, note) VALUES (?, ?, ?, ?)",
+        (user_id, node_id, marker_type, note),
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+async def remove_marker(user_id: int, node_id: str, marker_type: str) -> bool:
+    """取消标记"""
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM knowledge_markers WHERE user_id = ? AND node_id = ? AND marker_type = ?",
+        (user_id, node_id, marker_type),
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def get_user_markers(user_id: int) -> list:
+    """获取用户所有标记"""
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT km.id, km.node_id, km.marker_type, km.note, kn.label "
+        "FROM knowledge_markers km "
+        "LEFT JOIN knowledge_nodes kn ON kn.id = km.node_id "
+        "WHERE km.user_id = ? ORDER BY km.created_at DESC",
+        (user_id,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [dict(r) for r in rows]
+
+
+# ── 管理员 CRUD ──
+
+
+async def check_admin_role(user_id: int) -> bool:
+    """检查用户是否为管理员"""
+    db = await get_db()
+    cursor = await db.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    return row is not None and row["role"] == "admin"
+
+
+async def create_node(user_id: int, data: dict) -> dict:
+    """创建知识点节点"""
+    db = await get_db()
+    await db.execute(
+        """INSERT INTO knowledge_nodes (id, label, category, subject, parent_id, description, importance, source, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'user', ?)""",
+        (data["id"], data["label"], data["category"], data["subject"],
+         data.get("parent_id"), data.get("description", ""), data.get("importance", 3), user_id),
+    )
+    await db.commit()
+    return {"id": data["id"], "ok": True}
+
+
+async def update_node(node_id: str, data: dict) -> bool:
+    """更新知识点节点"""
+    db = await get_db()
+    fields = []
+    params = []
+    for key in ("label", "category", "subject", "parent_id", "description", "importance"):
+        if key in data:
+            fields.append(f"{key} = ?")
+            params.append(data[key])
+    if not fields:
+        return True
+    fields.append("updated_at = datetime('now')")
+    params.append(node_id)
+    cursor = await db.execute(
+        f"UPDATE knowledge_nodes SET {', '.join(fields)} WHERE id = ?", params
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def delete_node(node_id: str) -> bool:
+    """删除知识点节点（级联删除关联边和标记）"""
+    db = await get_db()
+    await db.execute("DELETE FROM knowledge_markers WHERE node_id = ?", (node_id,))
+    await db.execute("DELETE FROM knowledge_edges WHERE source_id = ? OR target_id = ?", (node_id, node_id))
+    cursor = await db.execute("DELETE FROM knowledge_nodes WHERE id = ?", (node_id,))
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def create_edge(user_id: int, data: dict) -> dict:
+    """创建关联边"""
+    db = await get_db()
+    await db.execute(
+        "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, type, label, created_by) VALUES (?, ?, ?, ?, ?)",
+        (data["source_id"], data["target_id"], data.get("type", "related"), data.get("label", ""), user_id),
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+async def delete_edge(source_id: str, target_id: str, edge_type: str) -> bool:
+    """删除关联边"""
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM knowledge_edges WHERE source_id = ? AND target_id = ? AND type = ?",
+        (source_id, target_id, edge_type),
+    )
+    await db.commit()
+    return cursor.rowcount > 0

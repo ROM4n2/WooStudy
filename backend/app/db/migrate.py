@@ -111,6 +111,43 @@ CREATE TABLE IF NOT EXISTS learning_summaries (
     UNIQUE(session_id, date)
 );
 
+-- 知识图谱节点表（持久化，覆盖 seed_data）
+CREATE TABLE IF NOT EXISTS knowledge_nodes (
+    id              TEXT    PRIMARY KEY,            -- 英文标识符，如 'newton_second'
+    label           TEXT    NOT NULL,                -- 中文显示名
+    category        TEXT    NOT NULL CHECK(category IN ('chapter','section','topic')),
+    subject         TEXT    NOT NULL,
+    parent_id       TEXT,                            -- 父节点 ID
+    description     TEXT,
+    importance      INTEGER DEFAULT 3,
+    source          TEXT    DEFAULT 'system',        -- 'system' / 'user'
+    created_by      INTEGER REFERENCES users(id),
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 知识图谱关联边表
+CREATE TABLE IF NOT EXISTS knowledge_edges (
+    source_id       TEXT    NOT NULL REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
+    target_id       TEXT    NOT NULL REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
+    type            TEXT    NOT NULL CHECK(type IN ('contains','prerequisite','related')),
+    label           TEXT    DEFAULT '',
+    created_by      INTEGER REFERENCES users(id),
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (source_id, target_id, type)
+);
+
+-- 用户知识点标记表
+CREATE TABLE IF NOT EXISTS knowledge_markers (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL REFERENCES users(id),
+    node_id         TEXT    NOT NULL REFERENCES knowledge_nodes(id),
+    marker_type     TEXT    NOT NULL CHECK(marker_type IN ('bookmark','weak','important')),
+    note            TEXT    DEFAULT '',
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, node_id, marker_type)
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_chat_session    ON chat_history(session_id);
 CREATE INDEX IF NOT EXISTS idx_error_session   ON error_logs(session_id);
@@ -118,6 +155,8 @@ CREATE INDEX IF NOT EXISTS idx_error_subject   ON error_logs(subject);
 CREATE INDEX IF NOT EXISTS idx_variant_error   ON variant_questions(error_log_id);
 CREATE INDEX IF NOT EXISTS idx_lab_session     ON lab_sessions(session_id);
 CREATE INDEX IF NOT EXISTS idx_questions_subject ON questions(subject);
+CREATE INDEX IF NOT EXISTS idx_knowledge_parent ON knowledge_nodes(parent_id);
+CREATE INDEX IF NOT EXISTS idx_km_user_node   ON knowledge_markers(user_id, node_id);
 """
 
 
@@ -141,6 +180,7 @@ async def _run_migrations(db) -> None:
     migrations = [
         ("ALTER TABLE sessions ADD COLUMN user_id INTEGER REFERENCES users(id)", "sessions.user_id"),
         ("ALTER TABLE sessions ADD COLUMN title TEXT DEFAULT '新对话'", "sessions.title"),
+        ("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'", "users.role"),
     ]
     for sql, desc in migrations:
         try:
@@ -156,6 +196,13 @@ async def _run_migrations(db) -> None:
     if row[0] == 0:
         await _seed_questions(db)
     await cursor.close()
+
+    # 导入知识图谱种子数据（如果知识节点表为空）
+    cursor2 = await db.execute("SELECT COUNT(*) FROM knowledge_nodes")
+    row2 = await cursor2.fetchone()
+    await cursor2.close()
+    if row2[0] == 0:
+        await _seed_knowledge_graph(db)
 
 
 async def _seed_questions(db) -> None:
@@ -187,3 +234,58 @@ async def _seed_questions(db) -> None:
         )
     await db.commit()
     print(f"[DB] 已从 seed_data/questions.json 导入 {len(questions)} 道种子题目")
+
+
+async def _seed_knowledge_graph(db) -> None:
+    """从 seed_data/knowledge_graph.json 导入初始知识图谱"""
+    seed_path = Path(__file__).parent.parent.parent / "seed_data" / "knowledge_graph.json"
+    if not seed_path.exists():
+        print("[DB] 未找到 seed_data/knowledge_graph.json，跳过图谱种子导入")
+        return
+
+    with open(seed_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    nodes = data.get("nodes", data) if isinstance(data, dict) else data
+    edges = data.get("edges", []) if isinstance(data, dict) else []
+    # 兼容纯数组格式
+    if isinstance(nodes, list) and len(nodes) > 0 and "id" in nodes[0]:
+        pass
+    else:
+        nodes = data.get("nodes", [])
+
+    count = 0
+    for n in nodes:
+        await db.execute(
+            """INSERT OR IGNORE INTO knowledge_nodes
+               (id, label, category, subject, parent_id, description, importance, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'system')""",
+            (n["id"], n["label"], n["category"], n["subject"],
+             n.get("parent"), n.get("description", ""), n.get("importance", 3)),
+        )
+        count += 1
+    # 边
+    existing_set = set()
+    for e in edges:
+        key = (e["source"], e["target"], e.get("type", "contains"))
+        if key in existing_set:
+            continue
+        existing_set.add(key)
+        await db.execute(
+            """INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, type, label)
+               VALUES (?, ?, ?, ?)""",
+            (e["source"], e["target"], e.get("type", "contains"), e.get("label", "")),
+        )
+    # 从 parent 字段生成包含边
+    for n in nodes:
+        parent = n.get("parent")
+        if parent:
+            key = (parent, n["id"], "contains")
+            if key not in existing_set:
+                existing_set.add(key)
+                await db.execute(
+                    "INSERT OR IGNORE INTO knowledge_edges (source_id, target_id, type) VALUES (?, ?, 'contains')",
+                    (parent, n["id"]),
+                )
+    await db.commit()
+    print(f"[DB] 已导入 {count} 个知识点节点到 knowledge_nodes")

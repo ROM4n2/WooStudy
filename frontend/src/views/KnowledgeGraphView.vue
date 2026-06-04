@@ -21,7 +21,7 @@
     <!-- Canvas 画布 -->
     <div class="kg-canvas-wrap" ref="canvasWrap" @contextmenu.prevent>
       <canvas ref="canvasRef" @mousedown="onPointerDown" @mousemove="onPointerMove" @mouseup="onPointerUp"
-        @wheel.prevent="onWheel" @click="onCanvasClick" @dblclick="onCanvasDblClick"
+        @wheel.prevent="onWheel" @click="onCanvasClick" @dblclick="onCanvasDblClick" @contextmenu="onCanvasContext"
         @touchstart.prevent="onTouchStart" @touchmove.prevent="onTouchMove" @touchend.prevent="onTouchEnd">
       </canvas>
 
@@ -54,6 +54,15 @@
             </div>
             <span class="mastery-val">{{ Math.round((selectedNode.mastery || 0) * 100) }}%</span>
           </div>
+          <div class="card-actions">
+            <button v-for="mt in markerTypes" :key="mt.key"
+              :class="['marker-btn', { active: (selectedNode.markers || []).includes(mt.key) }]"
+              :style="{ borderColor: (selectedNode.markers || []).includes(mt.key) ? mt.color : 'transparent' }"
+              @click="toggleNodeMarker(selectedNode, mt.key)"
+              :title="mt.label">
+              {{ mt.icon }}
+            </button>
+          </div>
           <button class="card-close" @click="selectedNode = null">✕</button>
         </div>
       </transition>
@@ -62,13 +71,40 @@
       <div v-if="isMobile && !selectedNode" class="mobile-legend">
         <span v-for="s in subjects" :key="s.key" class="legend-dot" :style="{ background: s.color }"></span>
       </div>
+
+      <!-- 右下角图例 -->
+      <div class="canvas-legend">
+        <div class="cl-row"><span class="cl-dot" style="background:#EF4444"></span>薄弱</div>
+        <div class="cl-row"><span class="cl-dot" style="background:#FBBF24"></span>重点</div>
+        <div class="cl-row"><span class="cl-dot" style="background:#22C55E"></span>收藏</div>
+      </div>
+
+      <!-- 右键标记菜单 -->
+      <transition name="menu-pop">
+        <div v-if="markerMenu" class="ctx-menu" :style="{ left: markerMenu.x + 'px', top: markerMenu.y + 'px' }">
+          <div class="ctx-header">{{ markerMenu.node.label }}</div>
+          <button v-for="mt in markerTypes" :key="mt.key"
+            :class="['ctx-item', { active: (markerMenu.node.markers || []).includes(mt.key) }]"
+            @click="toggleNodeMarker(markerMenu.node, mt.key)">
+            <span>{{ (markerMenu.node.markers || []).includes(mt.key) ? '✓' : mt.icon }}</span>
+            {{ mt.label }}
+          </button>
+          <div class="ctx-divider"></div>
+          <button class="ctx-item ctx-cancel" @click="closeMarkerMenu">取消</button>
+        </div>
+      </transition>
+
+      <!-- Toast -->
+      <transition name="toast-pop">
+        <div v-if="markerToast" class="kg-toast">{{ markerToast }}</div>
+      </transition>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, reactive, computed } from 'vue'
-import { getKnowledgeGraph } from '../api/knowledge'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { getKnowledgeGraph, addMarker, removeMarker } from '../api/knowledge'
 
 // ── 配色系统 ──
 const SUBJECT_COLORS = {
@@ -92,6 +128,11 @@ const subjects = [
   { key: 'optics', label: '光学', color: SUBJECT_COLORS.optics },
   { key: 'modern', label: '近代物理', color: SUBJECT_COLORS.modern },
 ]
+const markerTypes = [
+  { key: 'bookmark', label: '收藏', icon: '🔖', color: '#22C55E' },
+  { key: 'weak', label: '薄弱', icon: '🔴', color: '#EF4444' },
+  { key: 'important', label: '重点', icon: '⭐', color: '#FBBF24' },
+]
 
 function getSubjectColor(s) { return SUBJECT_COLORS[s] || '#94A3B8' }
 function subjectLabel(s) { return subjects.find(x => x.key === s)?.label || s || '' }
@@ -108,6 +149,8 @@ const loading = ref(true)
 const selectedNode = ref(null)
 const cardStyle = ref({})
 const isMobile = ref(window.innerWidth < 768)
+const markerMenu = ref(null)   // { node, x, y } | null
+const markerToast = ref('')
 
 let ctx = null
 let W = 0, H = 0
@@ -433,6 +476,20 @@ function drawScene() {
       const abbr = { mechanics: '力', electromagnetism: '电', thermodynamics: '热', optics: '光', modern: '近' }[n.subject] || ''
       ctx.fillText(abbr, n.x, n.y + 1)
     }
+
+    // 标记小图标
+    if (n.markers && n.markers.length > 0 && view.scale > 0.4) {
+      const iconY = n.y + r + (view.scale > 0.6 ? 18 : 14)
+      let iconX = n.x - (n.markers.length - 1) * 7
+      ctx.font = '10px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      for (const m of n.markers) {
+        const icon = { bookmark: '🔖', weak: '⚠️', important: '⭐' }[m] || ''
+        ctx.fillText(icon, iconX, iconY)
+        iconX += 14
+      }
+    }
   }
 
   ctx.restore()
@@ -574,11 +631,50 @@ function onCanvasDblClick(e) {
   const n = hitTest(e.offsetX, e.offsetY)
   if (!n) return
   const w = screenToWorld(e.offsetX, e.offsetY)
-  const targetScale = 1.5
   view.scale = Math.min(2, view.scale * 1.3)
   view.x = e.offsetX - (w.x * view.scale)
   view.y = e.offsetY - (w.y * view.scale)
   onCanvasClick(e)
+}
+
+function onCanvasContext(e) {
+  e.preventDefault()
+  const n = hitTest(e.offsetX, e.offsetY)
+  if (n) {
+    markerMenu.value = { node: n, x: e.clientX, y: e.clientY }
+  } else {
+    markerMenu.value = null
+  }
+}
+
+function closeMarkerMenu() { markerMenu.value = null }
+
+async function toggleNodeMarker(node, type) {
+  const markers = node.markers || []
+  const has = markers.includes(type)
+  try {
+    if (has) {
+      await removeMarker(node.id, type)
+      node.markers = markers.filter(m => m !== type)
+      showToast(getMarkerLabel(type) + ' 已取消')
+    } else {
+      await addMarker(node.id, type)
+      node.markers = [...markers, type]
+      showToast(getMarkerLabel(type) + ' 已标记')
+    }
+  } catch { showToast('操作失败') }
+  markerMenu.value = null
+}
+
+function getMarkerLabel(t) {
+  return { bookmark: '📑 收藏', weak: '🔴 薄弱', important: '⭐ 重点' }[t] || t
+}
+
+let toastTimer = null
+function showToast(msg) {
+  markerToast.value = msg
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { markerToast.value = '' }, 2000)
 }
 
 // ── 触屏支持 ──
@@ -863,6 +959,126 @@ window.addEventListener('resize', () => {
 .card-pop-leave-active { transition: all 0.15s ease-in; }
 .card-pop-enter-from { opacity: 0; transform: translateY(8px) scale(0.95); }
 .card-pop-leave-to { opacity: 0; transform: translateY(4px) scale(0.97); }
+
+/* ── 卡片标记按钮 ── */
+.card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.marker-btn {
+  flex: 1;
+  padding: 6px 0;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.05);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.15s;
+}
+.marker-btn:hover { background: rgba(255,255,255,0.1); }
+.marker-btn.active {
+  background: rgba(255,255,255,0.1);
+  box-shadow: 0 0 0 1px currentColor;
+}
+
+/* ── 右键菜单 ── */
+.ctx-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 160px;
+  background: rgba(20,25,55,0.97);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+.ctx-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.5);
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 4px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.8);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: left;
+  transition: background 0.1s;
+}
+.ctx-item:hover { background: rgba(255,255,255,0.08); }
+.ctx-item.active { color: #38BDF8; }
+.ctx-divider { height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
+.ctx-cancel { color: rgba(255,255,255,0.4); }
+
+.menu-pop-enter-active { transition: all 0.15s ease-out; }
+.menu-pop-leave-active { transition: all 0.1s ease-in; }
+.menu-pop-enter-from, .menu-pop-leave-to { opacity: 0; transform: scale(0.95); }
+
+/* ── Toast ── */
+.kg-toast {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15,20,45,0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #E8E6E3;
+  padding: 10px 24px;
+  border-radius: 24px;
+  font-size: 14px;
+  z-index: 100;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+.toast-pop-enter-active { transition: all 0.2s ease-out; }
+.toast-pop-leave-active { transition: all 0.2s ease-in; }
+.toast-pop-enter-from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+.toast-pop-leave-to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+
+/* ── 右下角图例 ── */
+.canvas-legend {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  background: rgba(0,0,0,0.5);
+  padding: 10px 14px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  pointer-events: none;
+}
+.cl-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
 
 /* ── 移动端 ── */
 .mobile-legend {
