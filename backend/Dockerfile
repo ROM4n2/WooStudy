@@ -1,4 +1,4 @@
-# 物知学后端 Dockerfile — 用于 Railway 部署
+# WooStudy 后端 Dockerfile — 用于 Railway 部署
 FROM python:3.12-slim
 
 WORKDIR /app

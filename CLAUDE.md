@@ -11,7 +11,7 @@
 - **AI**：Mimo (L1 多模态/基础) + DeepSeek V4 Pro (L2 深度推理)
 
 ## 项目路径
-`d:\Code\物知学\`
+`d:\Code\WooStudy\`
 
 ## 关键文件结构
 
@@ -69,7 +69,7 @@ dispatch_chat(content, image_base64, deep_mode, mimo_key, deepseek_key)
 - Railway 需要设 `JWT_SECRET` 环境变量
 
 ## 已实现
-- [x] A. 对话历史侧栏（聊天记录按日期分组）— 2026-06-04
+- [x] A. 对话历史侧栏 — 2026-06-04
   - 多 session 管理（新建/切换/删除）
   - 侧栏按日期分组（今天/昨天/本周/更早）
   - 自动从首条消息命名对话标题
@@ -86,6 +86,25 @@ dispatch_chat(content, image_base64, deep_mode, mimo_key, deepseek_key)
   - 用户标记系统（收藏/薄弱/重点），右键菜单 + 信息卡片切换
   - 掌握度算法增强：错题库 + 用户标记 + 学情摘要加权
   - 角色权限 admin/contributor/user
+- [x] 前端设计系统 v4（Luminous Scholarly）— 2026-06-05
+  - 渐变/玻璃质感/spring 动画曲线
+  - 每页独立氛围色背景光晕（data-page）
+  - 磨砂标签组导航 + 琥珀色活跃指示器
+- [x] 6 个高危 bug 修复 — 2026-06-05
+  - H1: 力导向图操作符优先级（NaN 坐标崩溃）
+  - H2: ChatView + 图谱 resize 事件监听器泄漏
+  - H3/H4: 认证绕过 + 会话删除越权漏洞
+  - H5: 虚拟实验室记录丢失
+  - H6: 图片多选只发第一张
+- [x] 3 个中危 bug 修复 — 2026-06-05
+  - 日期格式崩溃：parse_sqlite_dt 兼容 SQLite 格式
+  - 27 处 cursor 泄漏：db_execute/db_fetch_all/db_fetch_one 工具函数
+  - 代码去重：renderKaTeX/SUBJECTS/STORAGE_KEYS 共享常量
+- [x] 知识点贡献者流程 — 2026-06-05
+  - knowledge_nodes 加 status 字段（pending/approved/rejected）
+  - 5 个新 API 端点（提价/待审/批准/拒绝/图谱过滤）
+  - ContributorView.vue 三标签页面（提价/我的贡献/审核管理）
+  - 路由 /contribute + 导航入口
 
 ## 待做（按推荐顺序）
 - [ ] 迁移阿里云（Railway + Vercel → 阿里云国内服务器）
@@ -96,4 +115,4 @@ dispatch_chat(content, image_base64, deep_mode, mimo_key, deepseek_key)
   - 期间可用 IP 测试，Vercel+Railway 保持并行
   - 详细方案见 `C:\Users\席皓宇\.claude\projects\D--Code\memory\aliyun_migration.md`
 - [ ] 讨论区 + 资源共享（依赖阿里云稳定部署）
-- [ ] 知识点上传接口 ✅（已实现为管理员 CRUD，待完善为贡献者流程）
+- [ ] 中/低危 bug 修复（httpx 连接池复用、分析缓存 TTL、XSS 消毒等）
